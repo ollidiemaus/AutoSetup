@@ -1,0 +1,268 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
+
+    <Frame name="AutoSetupOptionsPanel" parent="UIParent" hidden="true">
+        <Scripts>
+            <OnLoad function="AutoSetup_OptionsPanel_OnLoad"/>
+        </Scripts>
+
+        <Size>
+            <AbsDimension x="700" y="600"/>
+        </Size>
+
+        <Anchors>
+            <Anchor point="CENTER"/>
+        </Anchors>
+
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString name="$parentTitleText" inherits="GameFontNormalLarge">
+                    <Anchors>
+                        <Anchor point="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="16" y="-16"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+
+        <Frames>
+            <!-- Profile name -->
+            <EditBox name="$parentNameInput" inherits="InputBoxTemplate">
+                <Size>
+                    <AbsDimension x="200" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-50"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </EditBox>
+
+            <FontString inherits="GameFontNormal" text="Profile Name">
+                <Anchors>
+                    <Anchor point="BOTTOMLEFT" relativeTo="$parentNameInput">
+                        <Offset>
+                            <AbsDimension x="0" y="2"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </FontString>
+
+            <!-- Resolution -->
+            <EditBox name="$parentResInput" inherits="InputBoxTemplate">
+                <Size>
+                    <AbsDimension x="140" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-100"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </EditBox>
+
+            <FontString inherits="GameFontNormal" text="Resolution (e.g. 1920x1080)">
+                <Anchors>
+                    <Anchor point="BOTTOMLEFT" relativeTo="$parentResInput">
+                        <Offset>
+                            <AbsDimension x="0" y="2"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </FontString>
+
+            <Button name="$parentUseCurrentResButton" inherits="GameMenuButtonTemplate" text="Use Current">
+                <Size>
+                    <AbsDimension x="120" y="22"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="$parentResInput" relativePoint="RIGHT">
+                        <Offset>
+                            <AbsDimension x="10" y="0"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+
+            <!-- Base layout -->
+            <EditBox name="$parentBaseLayoutInput" inherits="InputBoxTemplate">
+                <Size>
+                    <AbsDimension x="260" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-150"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </EditBox>
+
+            <FontString inherits="GameFontNormal" text="Base Edit Mode Layout Name">
+                <Anchors>
+                    <Anchor point="BOTTOMLEFT" relativeTo="$parentBaseLayoutInput">
+                        <Offset>
+                            <AbsDimension x="0" y="2"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </FontString>
+
+            <!-- Target layout -->
+            <EditBox name="$parentTargetLayoutInput" inherits="InputBoxTemplate">
+                <Size>
+                    <AbsDimension x="260" y="20"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-200"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </EditBox>
+
+            <FontString inherits="GameFontNormal" text="Target Layout (optional, used in combat/with target)">
+                <Anchors>
+                    <Anchor point="BOTTOMLEFT" relativeTo="$parentTargetLayoutInput">
+                        <Offset>
+                            <AbsDimension x="0" y="2"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </FontString>
+
+            <!-- UI Scale slider -->
+            <Slider name="$parentScaleSlider" minValue="0.65" maxValue="1.15" valueStep="0.01" inherits="OptionsSliderTemplate">
+                <Size>
+                    <AbsDimension x="200" y="17"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="320" y="-150"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString name="$parentScaleSliderText" inherits="GameFontNormal">
+                            <Anchors>
+                                <Anchor point="TOP" relativePoint="BOTTOM">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-4"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Slider>
+
+            <!-- Suppress chat -->
+            <CheckButton name="$parentSuppressCheck" inherits="ChatConfigCheckButtonTemplate">
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-240"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontNormal" text="Suppress 'layout applied' chat messages">
+                            <Anchors>
+                                <Anchor point="LEFT" relativePoint="RIGHT">
+                                    <Offset>
+                                        <AbsDimension x="2" y="0"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </CheckButton>
+
+            <!-- Addons input -->
+            <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiline="true">
+                <Size>
+                    <AbsDimension x="660" y="60"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-290"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <FontString inherits="GameFontHighlightSmall">
+                    <Anchors>
+                        <Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="0" y="2"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                    <Color r="1" g="1" b="1" a="1"/>
+                    <Text>AddOns (comma-separated; prefix with ! to disable, e.g. WeakAuras, !Details)</Text>
+                </FontString>
+            </EditBox>
+
+            <!-- Save / Clear buttons -->
+            <Button name="$parentSaveButton" inherits="GameMenuButtonTemplate" text="Save / Update">
+                <Size>
+                    <AbsDimension x="140" y="30"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-370"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+
+            <Button name="$parentClearButton" inherits="GameMenuButtonTemplate" text="Clear Form">
+                <Size>
+                    <AbsDimension x="120" y="30"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="LEFT" relativeTo="$parentSaveButton" relativePoint="RIGHT">
+                        <Offset>
+                            <AbsDimension x="10" y="0"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+
+            <!-- Profiles list -->
+            <ScrollFrame name="$parentScrollFrame" inherits="UIPanelScrollFrameTemplate">
+                <Size>
+                    <AbsDimension x="660" y="150"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-420"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+                <ScrollChild>
+                    <Frame name="$parentListContent">
+                        <Size>
+                            <AbsDimension x="640" y="400"/>
+                        </Size>
+                    </Frame>
+                </ScrollChild>
+            </ScrollFrame>
+        </Frames>
+    </Frame>
+</Ui>
+

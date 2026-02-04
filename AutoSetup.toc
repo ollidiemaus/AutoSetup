@@ -1,0 +1,10 @@
+## Interface: 110100
+## Title: AutoSetup
+## Notes: Resolution-based Edit Mode layout + AddOn profiles
+## Author: AutoSetup
+## Version: 1.0.0
+## SavedVariables: AutoSetupDB
+
+AutoSetup.lua
+FrameXML\AutoSetup_Options.lua
+FrameXML\AutoSetup_Options.xml
