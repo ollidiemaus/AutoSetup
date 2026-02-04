@@ -24,6 +24,10 @@ local function Print(msg)
     print("|cFF00CCFFAutoSetup:|r " .. tostring(msg))
 end
 
+-- expose for other files (e.g. options panel)
+AutoSetup.Debug = Debug
+AutoSetup.Print = Print
+
 local function StripEscapes(str)
     if not str or type(str) ~= "string" then return "" end
     local s = str

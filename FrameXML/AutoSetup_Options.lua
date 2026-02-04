@@ -48,6 +48,14 @@ local function BuildAddonsString(tbl)
     return table.concat(parts, ", ")
 end
 
+local function ASP(msg)
+    if AutoSetup and AutoSetup.Print then
+        AutoSetup.Print(msg)
+    else
+        print("AutoSetup: " .. tostring(msg))
+    end
+end
+
 local function RefreshProfileList(panel)
     if not panel or not panel.listContent then return end
 
@@ -163,11 +171,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         local addonsStr = panel.addonsInput:GetText() or ""
 
         if res == "" or baseLayout == "" then
-            if Print then
-                Print("Please enter a resolution and a base Edit Mode layout name.")
-            else
-                print("AutoSetup: Please enter a resolution and a base Edit Mode layout name.")
-            end
+            ASP("Please enter a resolution and a base Edit Mode layout name.")
             return
         end
 
@@ -179,11 +183,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         profile.suppressChat = suppress
         profile.addonSet = ParseAddonsString(addonsStr)
 
-        if Print then
-            Print("Saved AutoSetup profile for " .. res .. ".")
-        else
-            print("AutoSetup: Saved profile for " .. res .. ".")
-        end
+        ASP("Saved AutoSetup profile for " .. res .. ".")
         AutoSetup.RefreshOptionsList()
     end)
 
