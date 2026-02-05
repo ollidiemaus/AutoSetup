@@ -7,6 +7,7 @@ local defaultDB = {}
 local debugLog = {}
 local lastResolution = nil
 local initDone = false
+local lastAppliedLayoutClean = nil
 
 -------------------------------------------------------------------------------
 -- Utility
@@ -108,7 +109,6 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
         if activeInfo then
             local activeNameClean = CleanString(activeInfo.layoutName)
             if activeNameClean == targetNameClean then
-                if verbose then Print("Edit Mode layout already active.") end
                 return
             end
         end
@@ -133,6 +133,7 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
             Print("Switched to layout '" .. foundName .. "'.")
         end
         EditModeManagerFrame:SelectLayout(foundIndex)
+        lastAppliedLayoutClean = targetNameClean
     else
         if attemptsLeft and attemptsLeft > 0 then
             C_Timer.After(1.0, function()
@@ -165,12 +166,12 @@ local function ApplyAddonSet(profile, verbose)
 
     local addonSet = profile.addonSet
     local numAddOns = (C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or GetNumAddOns()
-    local player = UnitName("player")
     local changed = false
 
     local function GetEnabledState(name, index)
         if C_AddOns and C_AddOns.GetAddOnEnableState then
-            return C_AddOns.GetAddOnEnableState(player, name or index) > 0
+            -- Retail-style API: first argument is the addon name or index
+            return C_AddOns.GetAddOnEnableState(name or index) > 0
         else
             local _, _, _, enabled = GetAddOnInfo(name or index)
             return not not enabled
@@ -179,17 +180,17 @@ local function ApplyAddonSet(profile, verbose)
 
     local function EnableAddon(name, index)
         if C_AddOns and C_AddOns.EnableAddOn then
-            C_AddOns.EnableAddOn(name or index, player)
+            C_AddOns.EnableAddOn(name or index)
         else
-            EnableAddOn(name or index, player)
+            EnableAddOn(name or index)
         end
     end
 
     local function DisableAddon(name, index)
         if C_AddOns and C_AddOns.DisableAddOn then
-            C_AddOns.DisableAddOn(name or index, player)
+            C_AddOns.DisableAddOn(name or index)
         else
-            DisableAddOn(name or index, player)
+            DisableAddOn(name or index)
         end
     end
 
@@ -218,14 +219,8 @@ local function ApplyAddonSet(profile, verbose)
 
     if changed then
         if verbose then
-            Print("AddOn configuration changed for this resolution. Reloading UI...")
+            Print("AddOn configuration changed for this resolution. Please type /reload to apply changes.")
         end
-        -- Wrap ReloadUI in an anonymous function to satisfy C_Timer.After's callback requirements
-        C_Timer.After(0.5, function()
-            if ReloadUI then
-                ReloadUI()
-            end
-        end)
     elseif verbose then
         Print("AddOn configuration already matches profile.")
     end
@@ -280,7 +275,15 @@ local function EvaluateProfileState(verbose)
     end
 
     ApplyScale(profile, verbose)
-    ApplyEditLayout(layoutToUse, verbose)
+
+    -- Avoid redundant layout switches and chat spam if we already applied this layout
+    if layoutToUse and layoutToUse ~= "" then
+        local layoutClean = CleanString(layoutToUse)
+        if layoutClean ~= "" and layoutClean ~= lastAppliedLayoutClean then
+            ApplyEditLayout(layoutToUse, verbose)
+        end
+    end
+
     ApplyAddonSet(profile, verbose)
 end
 
