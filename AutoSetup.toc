@@ -1,9 +1,11 @@
 ## Interface: 120000
-## Title: AutoSetup
-## Notes: Resolution-based Edit Mode layout + AddOn profiles
-## Author: AutoSetup
 ## Version: 0.0.1
+## Title: AutoSetup
+## Author: ollidiemaus
+## Notes: Resolution-based Edit Mode layout + AddOn profiles
 ## SavedVariables: AutoSetupDB
+## X-Curse-Project-ID: TODO
+## X-Wago-ID: nKW3ZZKE
 
 AutoSetup.lua
 FrameXML\AutoSetup_Options.lua
