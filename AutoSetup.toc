@@ -2,7 +2,7 @@
 ## Title: AutoSetup
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
 ## Author: AutoSetup
-## Version: 1.0.0
+## Version: 0.0.1
 ## SavedVariables: AutoSetupDB
 
 AutoSetup.lua

@@ -1,16 +1,20 @@
--- AutoSetup - resolution-based Edit Mode layout + AddOn profiles
+-- AutoSetup
+-- Per‑resolution profiles that:
+--   * apply a chosen Edit Mode layout (and optional combat/target layout)
+--   * optionally set a UI scale
+--   * enable/disable a set of addons
 
 local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
 
 local defaultDB = {}
-local debugLog = {}
-local lastResolution = nil
-local initDone = false
-local lastAppliedLayoutClean = nil
+local debugLog = {}                -- rolling in‑memory log for /autosetup debug
+local lastResolution = nil         -- last resolution string we evaluated
+local initDone = false             -- guards one‑time initialization on login
+local lastAppliedLayoutClean = nil -- last layout name we actually selected (CleanString)
 
 -------------------------------------------------------------------------------
--- Utility
+-- Utility helpers
 -------------------------------------------------------------------------------
 
 local function Debug(msg)
@@ -29,6 +33,8 @@ end
 AutoSetup.Debug = Debug
 AutoSetup.Print = Print
 
+-- Strip color codes, links, textures and braces and lowercase the result.
+-- Used for both input strings and system messages.
 local function StripEscapes(str)
     if not str or type(str) ~= "string" then return "" end
     local s = str
@@ -41,6 +47,8 @@ local function StripEscapes(str)
     return s
 end
 
+-- Strip WoW color codes, trim whitespace and lowercase.
+-- This is the canonical way we compare layout names.
 local function CleanString(str)
     if not str or type(str) ~= "string" then return "" end
     local s = string.gsub(str, "|c%x%x%x%x%x%x%x%x", "")
@@ -60,7 +68,7 @@ local function GetCurrentResolution()
 end
 
 -------------------------------------------------------------------------------
--- Database helpers
+-- SavedVariables helpers
 -------------------------------------------------------------------------------
 
 local function GetDB()
@@ -73,6 +81,7 @@ local function GetProfileForResolution(resolution)
     return db[resolution]
 end
 
+-- Ensure and return a profile table for a given resolution key.
 local function EnsureProfile(resolution)
     local db = GetDB()
     db[resolution] = db[resolution] or {
@@ -96,6 +105,7 @@ AutoSetup.EnsureProfile = EnsureProfile
 
 local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
     if InCombatLockdown() then
+        -- Never touch layouts in combat; just bail quietly.
         if verbose then Print("Cannot change Edit Mode layout in combat.") end
         return
     end
@@ -104,6 +114,7 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
         C_AddOns.LoadAddOn("Blizzard_EditMode")
     end
 
+    -- If Edit Mode reports that we're already on the requested layout, do nothing.
     if C_EditMode and C_EditMode.GetActiveLayoutInfo then
         local activeInfo = C_EditMode.GetActiveLayoutInfo()
         if activeInfo then
@@ -153,9 +164,12 @@ end
 
 -------------------------------------------------------------------------------
 -- AddOn set switching
+-- Profile.addonSet format:
+--   [addonFolderName] = true  -- ensure addon is enabled
+--   [addonFolderName] = false -- ensure addon is disabled
+-- Only addons that appear in addonSet are touched; all others are left alone.
+-- The AutoSetup addon itself is never disabled even if specified.
 -------------------------------------------------------------------------------
--- addonSet format: [addonFolderName] = true (enable) or false (disable).
--- Only addons present in addonSet are touched. AutoSetup itself is never disabled.
 
 local function ApplyAddonSet(profile, verbose)
     if not profile or not profile.addonSet then return end
@@ -227,7 +241,7 @@ local function ApplyAddonSet(profile, verbose)
 end
 
 -------------------------------------------------------------------------------
--- Scale + profile evaluation
+-- UI scale + profile evaluation
 -------------------------------------------------------------------------------
 
 local function ApplyScale(profile, verbose)
@@ -288,7 +302,8 @@ local function EvaluateProfileState(verbose)
 end
 
 -------------------------------------------------------------------------------
--- Resolution monitoring (observe-only)
+-- Resolution monitoring (observe‑only)
+-- We never change the user's resolution; we only respond to changes.
 -------------------------------------------------------------------------------
 
 local function CheckResolutionChange()
