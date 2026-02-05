@@ -220,7 +220,12 @@ local function ApplyAddonSet(profile, verbose)
         if verbose then
             Print("AddOn configuration changed for this resolution. Reloading UI...")
         end
-        C_Timer.After(0.5, ReloadUI)
+        -- Wrap ReloadUI in an anonymous function to satisfy C_Timer.After's callback requirements
+        C_Timer.After(0.5, function()
+            if ReloadUI then
+                ReloadUI()
+            end
+        end)
     elseif verbose then
         Print("AddOn configuration already matches profile.")
     end
@@ -343,7 +348,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         Debug("AutoSetup loaded.")
 
         C_Timer.NewTicker(5.0, CheckResolutionChange)
-
     elseif event == "PLAYER_ENTERING_WORLD" then
         initDone = false
         local res = GetCurrentResolution()
@@ -355,13 +359,11 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
                 initDone = true
             end
         end)
-
     elseif event == "EDIT_MODE_LAYOUTS_UPDATED" then
         if not initDone then
             initDone = true
             EvaluateProfileState(true)
         end
-
     elseif event == "PLAYER_TARGET_CHANGED"
         or event == "PLAYER_SOFT_ENEMY_CHANGED"
         or event == "PLAYER_REGEN_DISABLED"
@@ -395,4 +397,3 @@ SlashCmdList["AUTOSETUP"] = function(msg)
         Print("Options panel not available.")
     end
 end
-

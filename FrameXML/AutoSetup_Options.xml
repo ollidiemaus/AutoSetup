@@ -44,15 +44,22 @@
                 </Anchors>
             </EditBox>
 
-            <FontString inherits="GameFontNormal" text="Profile Name">
-                <Anchors>
-                    <Anchor point="BOTTOMLEFT" relativeTo="$parentNameInput">
-                        <Offset>
-                            <AbsDimension x="0" y="2"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </FontString>
+            <Frame>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontNormal" text="Profile Name">
+                            <Anchors>
+                                <!-- Label above the input -->
+                                <Anchor point="BOTTOMLEFT" relativeTo="$parentNameInput" relativePoint="TOPLEFT">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-2"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
 
             <!-- Resolution -->
             <EditBox name="$parentResInput" inherits="InputBoxTemplate">
@@ -68,15 +75,22 @@
                 </Anchors>
             </EditBox>
 
-            <FontString inherits="GameFontNormal" text="Resolution (e.g. 1920x1080)">
-                <Anchors>
-                    <Anchor point="BOTTOMLEFT" relativeTo="$parentResInput">
-                        <Offset>
-                            <AbsDimension x="0" y="2"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </FontString>
+            <Frame>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontNormal" text="Resolution (e.g. 1920x1080)">
+                            <Anchors>
+                                <!-- Label above the input -->
+                                <Anchor point="BOTTOMLEFT" relativeTo="$parentResInput" relativePoint="TOPLEFT">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-2"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
 
             <Button name="$parentUseCurrentResButton" inherits="GameMenuButtonTemplate" text="Use Current">
                 <Size>
@@ -105,15 +119,35 @@
                 </Anchors>
             </EditBox>
 
-            <FontString inherits="GameFontNormal" text="Base Edit Mode Layout Name">
+            <Button name="$parentBaseLayoutButton" inherits="GameMenuButtonTemplate" text="Pick Layout">
+                <Size>
+                    <AbsDimension x="120" y="22"/>
+                </Size>
                 <Anchors>
-                    <Anchor point="BOTTOMLEFT" relativeTo="$parentBaseLayoutInput">
+                    <Anchor point="LEFT" relativeTo="$parentBaseLayoutInput" relativePoint="RIGHT">
                         <Offset>
-                            <AbsDimension x="0" y="2"/>
+                            <AbsDimension x="10" y="0"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
-            </FontString>
+            </Button>
+
+            <Frame>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontNormal" text="Base Edit Mode Layout Name">
+                            <Anchors>
+                                <!-- Label above the input -->
+                                <Anchor point="BOTTOMLEFT" relativeTo="$parentBaseLayoutInput" relativePoint="TOPLEFT">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-2"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
 
             <!-- Target layout -->
             <EditBox name="$parentTargetLayoutInput" inherits="InputBoxTemplate">
@@ -129,15 +163,35 @@
                 </Anchors>
             </EditBox>
 
-            <FontString inherits="GameFontNormal" text="Target Layout (optional, used in combat/with target)">
+            <Button name="$parentTargetLayoutButton" inherits="GameMenuButtonTemplate" text="Pick Layout">
+                <Size>
+                    <AbsDimension x="120" y="22"/>
+                </Size>
                 <Anchors>
-                    <Anchor point="BOTTOMLEFT" relativeTo="$parentTargetLayoutInput">
+                    <Anchor point="LEFT" relativeTo="$parentTargetLayoutInput" relativePoint="RIGHT">
                         <Offset>
-                            <AbsDimension x="0" y="2"/>
+                            <AbsDimension x="10" y="0"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
-            </FontString>
+            </Button>
+
+            <Frame>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontNormal" text="Target Layout (optional, used in combat/with target)">
+                            <Anchors>
+                                <!-- Label above the input -->
+                                <Anchor point="BOTTOMLEFT" relativeTo="$parentTargetLayoutInput" relativePoint="TOPLEFT">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-2"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
 
             <!-- UI Scale slider -->
             <Slider name="$parentScaleSlider" minValue="0.65" maxValue="1.15" valueStep="0.01" inherits="OptionsSliderTemplate">
@@ -147,7 +201,7 @@
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
-                            <AbsDimension x="320" y="-150"/>
+                            <AbsDimension x="460" y="-150"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
@@ -175,25 +229,12 @@
                         </Offset>
                     </Anchor>
                 </Anchors>
-                <Layers>
-                    <Layer level="ARTWORK">
-                        <FontString inherits="GameFontNormal" text="Suppress 'layout applied' chat messages">
-                            <Anchors>
-                                <Anchor point="LEFT" relativePoint="RIGHT">
-                                    <Offset>
-                                        <AbsDimension x="2" y="0"/>
-                                    </Offset>
-                                </Anchor>
-                            </Anchors>
-                        </FontString>
-                    </Layer>
-                </Layers>
             </CheckButton>
 
             <!-- Addons input -->
-            <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiline="true">
+            <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiLine="true">
                 <Size>
-                    <AbsDimension x="660" y="60"/>
+                    <AbsDimension x="620" y="60"/>
                 </Size>
                 <Anchors>
                     <Anchor point="TOPLEFT">
@@ -202,18 +243,25 @@
                         </Offset>
                     </Anchor>
                 </Anchors>
-                <FontString inherits="GameFontHighlightSmall">
-                    <Anchors>
-                        <Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT">
-                            <Offset>
-                                <AbsDimension x="0" y="2"/>
-                            </Offset>
-                        </Anchor>
-                    </Anchors>
-                    <Color r="1" g="1" b="1" a="1"/>
-                    <Text>AddOns (comma-separated; prefix with ! to disable, e.g. WeakAuras, !Details)</Text>
-                </FontString>
             </EditBox>
+
+            <Frame>
+                <Layers>
+                    <Layer level="ARTWORK">
+                        <FontString inherits="GameFontHighlightSmall"
+                                    text="AddOns (comma-separated; prefix with ! to disable, e.g. WeakAuras, !Details)">
+                            <Anchors>
+                                <!-- Label above the multi-line input -->
+                                <Anchor point="BOTTOMLEFT" relativeTo="$parentAddonsInput" relativePoint="TOPLEFT">
+                                    <Offset>
+                                        <AbsDimension x="0" y="-2"/>
+                                    </Offset>
+                                </Anchor>
+                            </Anchors>
+                        </FontString>
+                    </Layer>
+                </Layers>
+            </Frame>
 
             <!-- Save / Clear buttons -->
             <Button name="$parentSaveButton" inherits="GameMenuButtonTemplate" text="Save / Update">
@@ -245,12 +293,12 @@
             <!-- Profiles list -->
             <ScrollFrame name="$parentScrollFrame" inherits="UIPanelScrollFrameTemplate">
                 <Size>
-                    <AbsDimension x="660" y="150"/>
+                    <AbsDimension x="620" y="130"/>
                 </Size>
                 <Anchors>
-                    <Anchor point="TOPLEFT">
+                    <Anchor point="TOPLEFT" relativeTo="$parentSaveButton" relativePoint="BOTTOMLEFT">
                         <Offset>
-                            <AbsDimension x="20" y="-420"/>
+                            <AbsDimension x="0" y="-10"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
