@@ -215,6 +215,10 @@ local function RefreshProfileList(panel)
         row:Hide()
     end
 
+    if panel.placeholderRow then
+        panel.placeholderRow:Hide()
+    end
+
     local index = 1
     local yOffset = 0
     local hasAny = false
@@ -222,7 +226,7 @@ local function RefreshProfileList(panel)
     for res, data in pairs(db) do
         hasAny = true
         local row = panel.rows[index]
-        if not row then
+        if not row or not row.subtext then
             row = CreateFrame("Frame", nil, panel.listContent, "BackdropTemplate")
             row:SetSize(620, 55)
             row:SetBackdrop({
@@ -285,9 +289,9 @@ local function RefreshProfileList(panel)
         index = index + 1
     end
 
-    -- Show a friendly placeholder when there are no profiles yet
+    -- Show a friendly placeholder when there are no profiles yet (use separate frame so we never reuse it as a profile row)
     if not hasAny then
-        local row = panel.rows[1]
+        local row = panel.placeholderRow
         if not row then
             row = CreateFrame("Frame", nil, panel.listContent, "BackdropTemplate")
             row:SetSize(620, 40)
@@ -304,7 +308,7 @@ local function RefreshProfileList(panel)
             row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
             row.text:SetPoint("CENTER")
 
-            panel.rows[1] = row
+            panel.placeholderRow = row
         end
         row.text:SetText("No profiles saved yet. Fill the form above and click 'Save / Update'.")
         row:SetPoint("TOPLEFT", 0, 0)
