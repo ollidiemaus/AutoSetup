@@ -4,7 +4,7 @@
 ## Author: ollidiemaus
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
 ## SavedVariables: AutoSetupDB
-## X-Curse-Project-ID: T1454790O
+## X-Curse-Project-ID: 1454790O
 ## X-Wago-ID: nKW3ZZKE
 
 AutoSetup.lua
