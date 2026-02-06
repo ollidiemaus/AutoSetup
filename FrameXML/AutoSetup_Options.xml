@@ -231,16 +231,6 @@
                 </Anchors>
             </CheckButton>
 
-            <!-- Auto-reload UI -->
-            <CheckButton name="$parentAutoReloadCheck" inherits="ChatConfigCheckButtonTemplate">
-                <Anchors>
-                    <Anchor point="TOPLEFT">
-                        <Offset>
-                            <AbsDimension x="20" y="-265"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </CheckButton>
 
             <!-- Addons input -->
             <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiLine="true">
