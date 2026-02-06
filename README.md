@@ -46,10 +46,15 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 - **Chat noise control**
   - Optional flag to suppress “Edit Mode layout applied” messages in chat.
 
+- **Auto-reload UI**
+  - Optional flag to automatically reload the UI when addon changes are detected.
+  - When enabled, the addon will safely reload the UI after changing addon states (only when not in combat).
+  - When disabled, you'll need to manually type `/reload` after addon changes.
+
 - **Non‑intrusive behavior**
   - Never changes your actual resolution; it only **observes** it.
   - Skips layout and addon changes in combat to avoid taint.
-  - Avoids redundant layout switches and stutter when you’re already on the right layout.
+  - Avoids redundant layout switches and stutter when you're already on the right layout.
 
 ---
 
@@ -83,15 +88,19 @@ In the options panel:
 5. **UI Scale**
    - Adjust the slider if you want a per‑profile UI scale override.
 6. **Suppress chat**
-   - Check to hide Edit Mode “layout applied” spam in chat when this profile is active.
-7. **AddOns**
+   - Check to hide Edit Mode "layout applied" spam in chat when this profile is active.
+7. **Auto-reload UI**
+   - Check to automatically reload the UI when addon changes are detected for this profile.
+   - When enabled, the addon will safely reload the UI after changing addon states (only when not in combat).
+   - When disabled, you'll need to manually type `/reload` after addon changes.
+8. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
      - `WeakAuras, !Details, !Midnight Viewport`
-   - `Name`  = enable that addon
+   - `Name` = enable that addon
    - `!Name` = disable that addon
    - Names can be either **folder names** or **titles** from the AddOns list; the addon resolves them internally.
-8. Click **Save / Update** to store the profile for that resolution.
+9. Click **Save / Update** to store the profile for that resolution.
 
 Saved profiles are listed in the scrollable list at the bottom:
 

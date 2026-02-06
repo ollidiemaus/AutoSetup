@@ -12,6 +12,8 @@ local debugLog = {}                -- rolling in‑memory log for /autosetup deb
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- guards one‑time initialization on login
 local lastAppliedLayoutClean = nil -- last layout name we actually selected (CleanString)
+local pendingAutoReload = false    -- queue auto-reload until PLAYER_ENTERING_WORLD
+local lastReloadTime = 0           -- cooldown timer for auto-reload
 
 -------------------------------------------------------------------------------
 -- Utility helpers
@@ -32,6 +34,40 @@ end
 -- expose for other files (e.g. options panel)
 AutoSetup.Debug = Debug
 AutoSetup.Print = Print
+
+-- Comprehensive reload function detection and execution
+local detectedReloadFunction = nil
+local function DetectReloadFunction()
+    if detectedReloadFunction then return detectedReloadFunction end
+
+    Debug("Detecting available reload functions...")
+
+    -- Test multiple reload function candidates (correct WoW API functions)
+    local reloadCandidates = {
+        { name = "C_UI.Reload",     func = C_UI and C_UI.Reload }, -- Modern WoW API (correct)
+        { name = "global ReloadUI", func = _G.ReloadUI },          -- Legacy function
+        { name = "direct ReloadUI", func = ReloadUI },             -- Direct reference
+        { name = "Reload",          func = _G.Reload },            -- Alternative name
+    }
+
+    for _, candidate in ipairs(reloadCandidates) do
+        if candidate.func and type(candidate.func) == "function" then
+            Debug("Found candidate: " .. candidate.name)
+            -- Just check if it's a function, don't execute it during detection
+            if type(candidate.func) == "function" then
+                Debug("SUCCESS: " .. candidate.name .. " is available")
+                detectedReloadFunction = candidate.func
+                Debug("Using " .. candidate.name .. " for auto-reload")
+                return detectedReloadFunction
+            end
+        else
+            Debug("SKIPPED: " .. candidate.name .. " - not available")
+        end
+    end
+
+    Debug("No working reload function found!")
+    return nil
+end
 
 -- Strip color codes, links, textures and braces and lowercase the result.
 -- Used for both input strings and system messages.
@@ -171,6 +207,359 @@ end
 -- The AutoSetup addon itself is never disabled even if specified.
 -------------------------------------------------------------------------------
 
+-- Execute immediate auto-reload (not queued)
+local function ExecuteImmediateAutoReload(verbose)
+    if InCombatLockdown() then
+        if verbose then
+            Debug("Cannot reload UI in combat. Immediate auto-reload skipped.")
+            Print("Cannot reload UI in combat. Immediate auto-reload skipped.")
+        end
+        return
+    end
+
+    -- Cooldown to prevent duplicate reloads within 5 seconds
+    local currentTime = GetTime()
+    if currentTime - lastReloadTime < 5.0 then
+        if verbose then Debug("Auto-reload skipped: cooldown active") end
+        return
+    end
+
+    if verbose then
+        Debug("Executing immediate auto-reload...")
+        Print("Executing immediate auto-reload...")
+    end
+
+    lastReloadTime = GetTime()
+    Debug("Executing ReloadUI()...")
+
+    -- Detect the best available reload function
+    local reloadFunction = DetectReloadFunction()
+
+    if not reloadFunction then
+        Debug("ERROR: No reload function available!")
+        if verbose then Print("ERROR: No reload function available for immediate auto-reload") end
+        return
+    end
+
+    -- Try different timing approaches for the immediate reload
+    Debug("Testing different timing approaches for immediate reload...")
+    Print("Testing different timing approaches for immediate reload...")
+
+    -- Approach 1: Immediate execution
+    Debug("Approach 1: Immediate execution")
+    Print("Approach 1: Immediate execution")
+    local success, err = pcall(reloadFunction)
+    if success then
+        Debug("SUCCESS: Immediate execution worked!")
+        Print("SUCCESS: Immediate execution worked!")
+        if verbose then Print("UI reload completed successfully (immediate)") end
+        return
+    else
+        Debug("Failed: " .. tostring(err))
+        Print("Failed: " .. tostring(err))
+    end
+
+    -- Approach 2: Small delay (0.5 seconds)
+    Debug("Approach 2: 0.5 second delay")
+    Print("Approach 2: 0.5 second delay")
+    C_Timer.After(0.5, function()
+        if InCombatLockdown() then
+            Debug("Cannot reload UI in combat (delayed check)")
+            Print("Cannot reload UI in combat (delayed check)")
+            return
+        end
+        Debug("Executing with 0.5 second delay...")
+        Print("Executing with 0.5 second delay...")
+        local success2, err2 = pcall(reloadFunction)
+        if success2 then
+            Debug("SUCCESS: 0.5 second delay worked!")
+            Print("SUCCESS: 0.5 second delay worked!")
+            if verbose then Print("UI reload completed successfully (0.5s delay)") end
+        else
+            Debug("Failed with 0.5s delay: " .. tostring(err2))
+            Print("Failed with 0.5s delay: " .. tostring(err2))
+        end
+    end)
+
+    -- Approach 3: Longer delay (2 seconds)
+    Debug("Approach 3: 2 second delay")
+    Print("Approach 3: 2 second delay")
+    C_Timer.After(2.0, function()
+        if InCombatLockdown() then
+            Debug("Cannot reload UI in combat (delayed check)")
+            Print("Cannot reload UI in combat (delayed check)")
+            return
+        end
+        Debug("Executing with 2 second delay...")
+        Print("Executing with 2 second delay...")
+        local success3, err3 = pcall(reloadFunction)
+        if success3 then
+            Debug("SUCCESS: 2 second delay worked!")
+            Print("SUCCESS: 2 second delay worked!")
+            if verbose then Print("UI reload completed successfully (2s delay)") end
+        else
+            Debug("Failed with 2s delay: " .. tostring(err3))
+            Print("Failed with 2s delay: " .. tostring(err3))
+        end
+    end)
+end
+
+-- Safe auto-reload function with enhanced logging and cooldown
+local function SafeAutoReload(profile, verbose)
+    if not profile or not profile.autoReload then
+        if verbose then Debug("Auto-reload disabled for this profile") end
+        return
+    end
+
+    if InCombatLockdown() then
+        if verbose then
+            Debug("Cannot reload UI in combat. Auto-reload skipped.")
+            Print("Cannot reload UI in combat. Auto-reload skipped.")
+        end
+        return
+    end
+
+    -- Cooldown to prevent duplicate reloads within 5 seconds
+    local currentTime = GetTime()
+    if currentTime - lastReloadTime < 5.0 then
+        if verbose then Debug("Auto-reload skipped: cooldown active") end
+        return
+    end
+
+    if verbose then
+        Debug("Executing auto-reload immediately...")
+        Print("Executing auto-reload immediately...")
+    end
+
+    -- Execute the reload immediately (not queued)
+    ExecuteImmediateAutoReload(verbose)
+end
+
+-- Comprehensive reload function detection and execution
+local detectedReloadFunction = nil
+local function DetectReloadFunction()
+    if detectedReloadFunction then return detectedReloadFunction end
+
+    Debug("Detecting available reload functions...")
+
+    -- Test multiple reload function candidates (correct WoW API functions)
+    local reloadCandidates = {
+        { name = "C_UI.Reload",     func = C_UI and C_UI.Reload }, -- Modern WoW API (correct)
+        { name = "global ReloadUI", func = _G.ReloadUI },          -- Legacy function
+        { name = "direct ReloadUI", func = ReloadUI },             -- Direct reference
+        { name = "Reload",          func = _G.Reload },            -- Alternative name
+    }
+
+    for _, candidate in ipairs(reloadCandidates) do
+        if candidate.func and type(candidate.func) == "function" then
+            Debug("Found candidate: " .. candidate.name)
+            -- Just check if it's a function, don't execute it during detection
+            if type(candidate.func) == "function" then
+                Debug("SUCCESS: " .. candidate.name .. " is available")
+                detectedReloadFunction = candidate.func
+                Debug("Using " .. candidate.name .. " for auto-reload")
+                return detectedReloadFunction
+            end
+        else
+            Debug("SKIPPED: " .. candidate.name .. " - not available")
+        end
+    end
+
+    Debug("No working reload function found!")
+    return nil
+end
+
+-- Execute queued auto-reload after PLAYER_ENTERING_WORLD
+local function ExecuteQueuedAutoReload(verbose)
+    if not pendingAutoReload then return end
+
+    pendingAutoReload = false
+
+    if InCombatLockdown() then
+        if verbose then
+            Debug("Cannot reload UI in combat. Queued auto-reload skipped.")
+            Print("Cannot reload UI in combat. Queued auto-reload skipped.")
+        end
+        return
+    end
+
+    -- Cooldown to prevent duplicate reloads within 5 seconds
+    local currentTime = GetTime()
+    if currentTime - lastReloadTime < 5.0 then
+        if verbose then Debug("Auto-reload skipped: cooldown active") end
+        return
+    end
+
+    if verbose then
+        Debug("Executing queued auto-reload...")
+        Print("Executing queued auto-reload...")
+    end
+
+    -- Execute the reload with different timing approaches
+    if InCombatLockdown() then
+        if verbose then
+            Debug("Cannot reload UI in combat. Queued auto-reload skipped.")
+            Print("Cannot reload UI in combat. Queued auto-reload skipped.")
+        end
+        return
+    end
+
+    lastReloadTime = GetTime()
+    Debug("Executing ReloadUI()...")
+
+    -- Detect the best available reload function
+    local reloadFunction = DetectReloadFunction()
+
+    if not reloadFunction then
+        Debug("ERROR: No reload function available!")
+        if verbose then Print("ERROR: No reload function available for auto-reload") end
+        return
+    end
+
+    -- Try different timing approaches for the reload
+    Debug("Testing different timing approaches for reload...")
+    Print("Testing different timing approaches for reload...")
+
+    -- Approach 1: Immediate execution
+    Debug("Approach 1: Immediate execution")
+    Print("Approach 1: Immediate execution")
+    local success, err = pcall(reloadFunction)
+    if success then
+        Debug("SUCCESS: Immediate execution worked!")
+        Print("SUCCESS: Immediate execution worked!")
+        if verbose then Print("UI reload completed successfully (immediate)") end
+        return
+    else
+        Debug("Failed: " .. tostring(err))
+        Print("Failed: " .. tostring(err))
+    end
+
+    -- Approach 2: Small delay (0.5 seconds)
+    Debug("Approach 2: 0.5 second delay")
+    Print("Approach 2: 0.5 second delay")
+    C_Timer.After(0.5, function()
+        if InCombatLockdown() then
+            Debug("Cannot reload UI in combat (delayed check)")
+            Print("Cannot reload UI in combat (delayed check)")
+            return
+        end
+        Debug("Executing with 0.5 second delay...")
+        Print("Executing with 0.5 second delay...")
+        local success2, err2 = pcall(reloadFunction)
+        if success2 then
+            Debug("SUCCESS: 0.5 second delay worked!")
+            Print("SUCCESS: 0.5 second delay worked!")
+            if verbose then Print("UI reload completed successfully (0.5s delay)") end
+        else
+            Debug("Failed with 0.5s delay: " .. tostring(err2))
+            Print("Failed with 0.5s delay: " .. tostring(err2))
+        end
+    end)
+
+    -- Approach 3: Longer delay (2 seconds)
+    Debug("Approach 3: 2 second delay")
+    Print("Approach 3: 2 second delay")
+    C_Timer.After(2.0, function()
+        if InCombatLockdown() then
+            Debug("Cannot reload UI in combat (delayed check)")
+            Print("Cannot reload UI in combat (delayed check)")
+            return
+        end
+        Debug("Executing with 2 second delay...")
+        Print("Executing with 2 second delay...")
+        local success3, err3 = pcall(reloadFunction)
+        if success3 then
+            Debug("SUCCESS: 2 second delay worked!")
+            Print("SUCCESS: 2 second delay worked!")
+            if verbose then Print("UI reload completed successfully (2s delay)") end
+        else
+            Debug("Failed with 2s delay: " .. tostring(err3))
+            Print("Failed with 2s delay: " .. tostring(err3))
+        end
+    end)
+end
+
+-- Execute reload function with proper detection
+local function ExecuteReload()
+    if InCombatLockdown() then
+        Debug("Cannot reload UI in combat. Reload skipped.")
+        Print("Cannot reload UI in combat. Reload skipped.")
+        return
+    end
+
+    -- Detect the best available reload function
+    local reloadFunction = DetectReloadFunction()
+
+    if not reloadFunction then
+        Debug("ERROR: No reload function available!")
+        Print("ERROR: No reload function available for reload")
+        return
+    end
+
+    Debug("Executing ReloadUI()...")
+    Print("Reloading UI...")
+
+    -- Execute the reload
+    local success, err = pcall(reloadFunction)
+    if success then
+        Debug("SUCCESS: UI reload completed!")
+        Print("UI reload completed successfully!")
+    else
+        Debug("FAILED: " .. tostring(err))
+        Print("FAILED: " .. tostring(err))
+    end
+end
+
+-- Show reload required popup
+local function ShowReloadPopup(profile)
+    -- The XML frame should already be loaded and available
+    if AutoSetupReloadPopup then
+        -- Update message with profile info if available
+        if profile and profile.name then
+            AutoSetupReloadPopupMessage:SetText("AddOn configuration has changed for '" ..
+                profile.name .. "'.\nA UI reload is required to apply changes.")
+        else
+            AutoSetupReloadPopupMessage:SetText(
+                "AddOn configuration has changed.\nA UI reload is required to apply changes.")
+        end
+
+        -- Show the popup
+        AutoSetupReloadPopup:Show()
+    else
+        -- Fallback to old method if XML frame not available
+        Debug("AutoSetupReloadPopup XML frame not available, using fallback")
+        Print("AutoSetupReloadPopup XML frame not available")
+    end
+end
+
+-- Manual test function for reload functionality
+local function TestReloadFunction()
+    Debug("=== MANUAL RELOAD TEST ===")
+    Debug("Testing reload function manually...")
+
+    -- Detect available reload function
+    local reloadFunction = DetectReloadFunction()
+
+    if not reloadFunction then
+        Debug("ERROR: No reload function available!")
+        Print("ERROR: No reload function available for manual test")
+        return
+    end
+
+    Debug("Using function: " .. (detectedReloadFunction == C_UI.Reload and "C_UI.Reload()" or "ReloadUI()"))
+
+    -- Test immediate execution
+    Debug("Testing immediate execution...")
+    local success, err = pcall(reloadFunction)
+    if success then
+        Debug("SUCCESS: Manual reload worked immediately!")
+        Print("SUCCESS: Manual reload worked immediately!")
+    else
+        Debug("FAILED: " .. tostring(err))
+        Print("FAILED: " .. tostring(err))
+    end
+end
+
 local function ApplyAddonSet(profile, verbose)
     if not profile or not profile.addonSet then return end
     if InCombatLockdown() then
@@ -232,10 +621,15 @@ local function ApplyAddonSet(profile, verbose)
     end
 
     if changed then
+        Debug("AddOn changes detected: Showing reload popup")
+        -- Show popup instead of auto-reload
+        ShowReloadPopup(profile)
+
         if verbose then
-            Print("AddOn configuration changed for this resolution. Please type /reload to apply changes.")
+            Print("AddOn configuration changed for this resolution. Please click 'Reload UI' to apply changes.")
         end
     elseif verbose then
+        Debug("No AddOn changes detected - configuration already matches profile")
         Print("AddOn configuration already matches profile.")
     end
 end
@@ -371,6 +765,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         local res = GetCurrentResolution()
         Debug("PLAYER_ENTERING_WORLD. Current resolution: " .. res)
 
+        -- Execute any queued auto-reload after PLAYER_ENTERING_WORLD
+        ExecuteQueuedAutoReload(true)
+
         C_Timer.After(4.0, function()
             if not initDone then
                 EvaluateProfileState(true)
@@ -406,6 +803,9 @@ SlashCmdList["AUTOSETUP"] = function(msg)
         for _, line in ipairs(debugLog) do
             print("|cff888888" .. line .. "|r")
         end
+        return
+    elseif msg == "testreload" then
+        TestReloadFunction()
         return
     end
 

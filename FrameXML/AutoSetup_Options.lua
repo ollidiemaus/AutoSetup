@@ -58,7 +58,8 @@ local function ResolveAddonNames(userMap)
     if not userMap then return nil end
 
     local resolved = {}
-    local numAddOns = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or (GetNumAddOns and GetNumAddOns()) or 0
+    local numAddOns = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or
+        (GetNumAddOns and GetNumAddOns()) or 0
 
     for userName, enabled in pairs(userMap) do
         local lowerUser = string.lower(userName)
@@ -261,10 +262,13 @@ local function RefreshProfileList(panel)
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = data.addonSet and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "default"
+        local autoReloadText = data.autoReload and "|cff00ff00Auto-reload|r" or "|cffff0000Manual reload|r"
 
         row.text:SetText(displayName)
         row.subtext:SetText(res ..
-            "\nBase: " .. (data.editLayoutBase or "?") .. targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons)
+            "\nBase: " ..
+            (data.editLayoutBase or "?") ..
+            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. " | " .. autoReloadText)
 
         row.delBtn:SetScript("OnClick", function()
             AutoSetupDB[res] = nil
@@ -279,6 +283,7 @@ local function RefreshProfileList(panel)
             panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
             panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
             panel.suppressCheck:SetChecked(data.suppressChat or false)
+            panel.autoReloadCheck:SetChecked(data.autoReload or false)
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet))
         end)
 
@@ -341,6 +346,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
     panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"]
     panel.suppressCheck       = _G[baseName .. "SuppressCheck"]
+    panel.autoReloadCheck     = _G[baseName .. "AutoReloadCheck"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
     panel.saveButton          = _G[baseName .. "SaveButton"]
     panel.clearButton         = _G[baseName .. "ClearButton"]
@@ -362,6 +368,10 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
 
     if panel.suppressCheck and panel.suppressCheck.Text then
         panel.suppressCheck.Text:SetText("Suppress 'layout applied' chat messages")
+    end
+
+    if panel.autoReloadCheck and panel.autoReloadCheck.Text then
+        panel.autoReloadCheck.Text:SetText("Auto-reload UI when addon changes are detected")
     end
 
     if panel.useCurrentResButton then
@@ -391,6 +401,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             local targetLayout = panel.targetLayoutInput:GetText() or ""
             local scale = tonumber(string.format("%.2f", panel.scaleSlider:GetValue()))
             local suppress = panel.suppressCheck:GetChecked() and true or false
+            local autoReload = panel.autoReloadCheck:GetChecked() and true or false
             local addonsStr = panel.addonsInput:GetText() or ""
 
             if res == "" or baseLayout == "" then
@@ -404,6 +415,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             profile.editLayoutTarget = (targetLayout ~= "" and targetLayout) or nil
             profile.scale = scale
             profile.suppressChat = suppress
+            profile.autoReload = autoReload
             profile.addonSet = ResolveAddonNames(ParseAddonsString(addonsStr))
 
             ASP("Saved AutoSetup profile for " .. res .. ".")
