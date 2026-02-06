@@ -10,7 +10,7 @@
         <Anchors>
             <Anchor point="CENTER" relativeTo="UIParent" relativePoint="CENTER">
                 <Offset>
-                    <AbsDimension x="0" y="-40" />
+                    <AbsDimension x="0" y="80" />
                 </Offset>
             </Anchor>
         </Anchors>
@@ -79,9 +79,9 @@
                     <AbsDimension x="120" y="25" />
                 </Size>
                 <Anchors>
-                    <Anchor point="BOTTOM" relativeTo="$parent" relativePoint="BOTTOM">
+                    <Anchor point="BOTTOMRIGHT" relativeTo="$parent" relativePoint="BOTTOMRIGHT">
                         <Offset>
-                            <AbsDimension x="0" y="20" />
+                            <AbsDimension x="-40" y="20" />
                         </Offset>
                     </Anchor>
                 </Anchors>
@@ -103,9 +103,9 @@
                     <AbsDimension x="120" y="25" />
                 </Size>
                 <Anchors>
-                    <Anchor point="RIGHT" relativeTo="$parentReloadButton" relativePoint="LEFT">
+                    <Anchor point="BOTTOMLEFT" relativeTo="$parent" relativePoint="BOTTOMLEFT">
                         <Offset>
-                            <AbsDimension x="-10" y="0" />
+                            <AbsDimension x="40" y="20" />
                         </Offset>
                     </Anchor>
                 </Anchors>
