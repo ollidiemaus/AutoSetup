@@ -4,9 +4,10 @@
 ## Author: ollidiemaus
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
 ## SavedVariables: AutoSetupDB
-## X-Curse-Project-ID: TODO
+## X-Curse-Project-ID: T1454790O
 ## X-Wago-ID: nKW3ZZKE
 
 AutoSetup.lua
 FrameXML\AutoSetup_Options.lua
 FrameXML\AutoSetup_Options.xml
+FrameXML\AutoSetup_ReloadPopup.xml
