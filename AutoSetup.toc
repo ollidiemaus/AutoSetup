@@ -1,5 +1,5 @@
-## Interface: 120000
-## Version: 0.0.2
+## Interface: 120001
+## Version: 0.0.3
 ## Title: AutoSetup
 ## Author: ollidiemaus
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
