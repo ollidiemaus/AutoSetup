@@ -58,8 +58,49 @@ User resolution is the key: `AutoSetupDB["1920x1080"] = profile`
   local numAddons = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns())
                    or GetNumAddOns()
   ```
+- **Runtime feature detection (recommended):** Prefer checking whether a function or table exists at runtime and provide a safe fallback. This reduces breakage when Blizzard moves a function between namespaces or deprecates it.
+  ```lua
+  local Reload = (C_UI and C_UI.Reload) or ReloadUI or function()
+      -- fallback: log or show a prompt to the user instead of erroring
+      print("Reload function not available; please reload manually")
+  end
+  ```
 - **Handling reload:** Multiple detection candidates (`C_UI.Reload`, `ReloadUI`, etc.); see `DetectReloadFunction()`
-- Interface version: Check `.toc` file (currently `## Interface: 120000`)
+- **Interface version:** Check `.toc` file (update `## Interface:` when required by patches)
+
+**API change checklist:** when a new WoW patch lands, verify the following before release:
+
+- Confirm `C_*` namespaces used in the addon still expose the expected functions.
+- Add or update runtime guards for any calls that may throw if missing.
+- Run the addon on the new client and capture any nil-index or missing global errors.
+- If an API was removed or renamed, prefer feature-detection fallbacks instead of hard assumptions.
+
+**Example — detecting Edit Mode layouts at runtime:**
+
+Sometimes `C_EditMode` or `C_EditMode.GetLayouts` may not be available immediately during startup. Use feature detection and/or listen for `EDIT_MODE_LAYOUTS_UPDATED` as a fallback to avoid nil-index errors:
+
+```lua
+local function GetLayoutsSafe()
+  if C_EditMode and C_EditMode.GetLayouts then
+    return C_EditMode.GetLayouts().layouts
+  else
+    -- Either load Blizzard_EditMode or register for EDIT_MODE_LAYOUTS_UPDATED and retry
+    return nil
+  end
+end
+
+-- Example usage: attempt to fetch layouts, otherwise wait for the event
+if not GetLayoutsSafe() then
+  local f = CreateFrame("Frame")
+  f:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+  f:SetScript("OnEvent", function(self)
+    local layouts = GetLayoutsSafe()
+    if layouts then
+      -- proceed with layout population
+      self:UnregisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    end
+  end)
+```
 
 ### Combat Safety
 
