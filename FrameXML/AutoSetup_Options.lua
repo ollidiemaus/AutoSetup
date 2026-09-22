@@ -3,14 +3,7 @@
 local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
 
-local function GetCurrentResolution()
-    local width, height = GetPhysicalScreenSize()
-    if width and height then
-        return math.floor(width) .. "x" .. math.floor(height)
-    end
-    local rawRes = GetCVar("gxWindowedResolution") or GetCVar("gxResolution") or ""
-    return rawRes:match("%d+x%d+") or "Unknown"
-end
+local GetCurrentResolution = AutoSetup.GetCurrentResolution
 
 -- Parse addons string: "Addon1, !Addon2, WeakAuras"
 --  "Name"  => enable
@@ -53,13 +46,22 @@ local function BuildAddonsString(tbl)
     return table.concat(parts, ", ")
 end
 
+local function ASP(msg)
+    if AutoSetup and AutoSetup.Print then
+        AutoSetup.Print(msg)
+    else
+        print("AutoSetup: " .. tostring(msg))
+    end
+end
+
 -- Resolve user-entered addon names (which may be titles) to real folder names
 local function ResolveAddonNames(userMap)
     if not userMap then return nil end
 
     local resolved = {}
-    local numAddOns = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or
-        (GetNumAddOns and GetNumAddOns()) or 0
+    local getCount = AutoSetup.GetAddOnCount
+    local getInfo = AutoSetup.GetAddOnNameAndTitle
+    local numAddOns = getCount and getCount() or ((GetNumAddOns and GetNumAddOns()) or 0)
 
     for userName, enabled in pairs(userMap) do
         local lowerUser = string.lower(userName)
@@ -67,8 +69,8 @@ local function ResolveAddonNames(userMap)
 
         for i = 1, numAddOns do
             local name, title
-            if C_AddOns and C_AddOns.GetAddOnInfo then
-                name, title = C_AddOns.GetAddOnInfo(i)
+            if getInfo then
+                name, title = getInfo(i)
             else
                 name, title = GetAddOnInfo(i)
             end
@@ -83,21 +85,16 @@ local function ResolveAddonNames(userMap)
             end
         end
 
-        -- If we didn't find a matching addon, keep the raw key as a fallback
+        -- If we didn't find a matching addon, keep the raw key as a fallback,
+        -- but let the user know so a typo isn't a silent no-op.
         if not found then
             resolved[userName] = enabled
+            ASP("No installed addon matches '" ..
+                userName .. "' — check the spelling; this entry will not affect any addon until corrected.")
         end
     end
 
     return next(resolved) and resolved or nil
-end
-
-local function ASP(msg)
-    if AutoSetup and AutoSetup.Print then
-        AutoSetup.Print(msg)
-    else
-        print("AutoSetup: " .. tostring(msg))
-    end
 end
 
 -- Retrieve available Edit Mode layouts (names)
@@ -262,7 +259,6 @@ local function RefreshProfileList(panel)
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = data.addonSet and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "default"
-        local autoReloadText = ""
 
         row.text:SetText(displayName)
         row.subtext:SetText(res ..
