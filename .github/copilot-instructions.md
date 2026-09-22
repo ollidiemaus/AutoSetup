@@ -1,184 +1,101 @@
-# AutoSetup AI Coding Instructions
+# AutoSetup — Copilot Instructions
 
-## Project Overview
+## Project overview
 
-AutoSetup is a **World of Warcraft addon** (Lua + XML) that automatically applies per-resolution profiles for Edit Mode layouts, UI scale, and addon enable/disable sets. Players switch between devices (PC, laptop, Steam Deck) at different resolutions; AutoSetup detects resolution and applies the right profile.
+A World of Warcraft addon (Lua + XML, no external libraries). It detects the
+current screen resolution and applies a matching per-resolution profile: an
+Edit Mode layout, an optional UI scale, and an addon enable/disable set. Aimed
+at players who switch devices (PC, laptop, Steam Deck) at different
+resolutions.
 
-**Key insight:** This addon solves "friction on low-playtime" by automating multi-device WoW setup—reducing manual Edit Mode/AddOns screen interaction each session.
+## Files & load order
 
-## Architecture & Key Components
+Per `AutoSetup.toc` (in this order):
 
-### Core Event Loop (`AutoSetup.lua`)
+- `AutoSetup.lua` — core: resolution detection, profile storage, layout/scale/
+  addon application, event loop, reload, slash commands. Exposes shared
+  helpers on the `AutoSetup` table (also assigned to `_G.AutoSetup`, since XML
+  `<OnClick>`/`<OnLoad>` scripts only see globals, not Lua file-locals).
+- `FrameXML/AutoSetup_Options.lua` + `.xml` — Settings panel: profile CRUD,
+  addon-name parsing/resolution, Edit Mode layout picker.
+- `FrameXML/AutoSetup_ReloadPopup.xml` — "reload required" dialog; its button
+  calls `AutoSetup.ExecuteReload()`.
 
-- **Entry point:** `ADDON_LOADED` event initializes `AutoSetupDB` (SavedVariables table)
-- **Main flow:**
-  1. `PLAYER_ENTERING_WORLD` → evaluates profile after 4s delay
-  2. `CheckResolutionChange()` runs every 5 seconds (monitors resolution changes)
-  3. `EvaluateProfileState()` applies scale, layout, and addon set for current resolution
-  4. Combat/target events trigger re-evaluation (switches base ↔ target layout as needed)
+`SavedVariables: AutoSetupDB` is the only persisted table, keyed by resolution
+string (e.g. `AutoSetupDB["1920x1080"]`).
 
-### Profile Structure
+## Core flow
+
+1. `ADDON_LOADED` (own addon) → init `AutoSetupDB`, purge legacy `autoReload`
+   fields from old saved profiles, prime the chat-suppression cache, start a
+   20s fallback ticker.
+2. `PLAYER_ENTERING_WORLD` → after a 4s delay, run the first
+   `EvaluateProfileState(true)` (guarded by `initDone`; `EDIT_MODE_LAYOUTS_UPDATED`
+   can also trigger this first run — whichever fires first wins, not both).
+3. `DISPLAY_SIZE_CHANGED` / `UI_SCALE_CHANGED` → primary resolution-change
+   detection; 0.1s defer then `CheckResolutionChange()`.
+4. The 20s ticker also calls `CheckResolutionChange()` — a fallback only, for
+   cases the two events above don't catch.
+5. `PLAYER_TARGET_CHANGED`, `PLAYER_SOFT_ENEMY_CHANGED`,
+   `PLAYER_REGEN_DISABLED/ENABLED` → re-evaluate (base ↔ target layout switch),
+   once `initDone`.
+6. `EvaluateProfileState()` → looks up the profile for the current resolution,
+   applies scale, layout (base or target depending on combat/target state),
+   and the addon set; updates the `currentSuppressChat` cache.
+
+## Profile schema
 
 ```lua
 profile = {
-  name = "Display name", -- e.g., "Steam Deck 1280x800"
+  name = "Display name",               -- e.g. "Steam Deck 1280x800"
   editLayoutBase = "MyBaseLayout",
-  editLayoutTarget = "MyCombatLayout",  -- optional; used in combat or with target
-  scale = 0.85,  -- optional UI scale override
-  suppressChat = true,  -- suppress "layout applied" messages
-  autoReload = true,  -- auto-reload UI when addons change
-  addonSet = {AddonName = true/false, ...}  -- only touched addons are modified
+  editLayoutTarget = "MyCombatLayout",  -- optional; used in combat or with a target
+  scale = 0.85,                         -- optional UI scale override
+  suppressChat = true,                  -- suppress "layout applied" chat messages
+  addonSet = { AddonName = true/false }, -- only listed addons are touched
 }
 ```
 
-User resolution is the key: `AutoSetupDB["1920x1080"] = profile`
+## Conventions
 
-### Options Panel (`AutoSetup_Options.lua` + `.xml`)
+- **Combat lockdown**: never mutate layout, scale, or addon state while
+  `InCombatLockdown()` is true. Every mutating function already guards this
+  itself (`ApplyEditLayoutInternal`, `ApplyScale`, `ApplyAddonSet`,
+  `AutoSetup.ExecuteReload`) — don't add a second guard at the call site.
+- **Resolution string**: always `WIDTHxHEIGHT` from `GetPhysicalScreenSize()`
+  (falls back to parsing the `gxWindowedResolution`/`gxResolution` CVars). Use
+  `AutoSetup.GetCurrentResolution()` from other files rather than
+  reimplementing it.
+- **WoW API fallback idiom**: check the `C_AddOns`/`C_EditMode`/`C_UI`
+  namespace first, fall back to the legacy global. Reuse `GetAddOnCount()` /
+  `GetAddOnNameAndTitle()` (exposed on `AutoSetup`) instead of reimplementing
+  addon-list iteration again.
+- **Reload**: always go through `AutoSetup.ExecuteReload()` — it checks combat
+  lockdown, then tries `ReloadUI()`/`C_UI.Reload()`. Never call those directly.
+- **Layout name comparison**: run both sides through `CleanString()` (strips
+  color codes, trims, lowercases) before comparing; `lastAppliedLayoutClean`
+  avoids redundant re-application.
+- **Chat suppression**: read the cached `currentSuppressChat` (kept up to date
+  inside `EvaluateProfileState`) — don't look up the profile per chat line.
+- **Self-protection quirk**: `ApplyAddonSet` forces `desired = true` for
+  AutoSetup's own addon name, so it can never disable itself even if listed
+  with `!`.
+- `Debug(msg)` logs to the rolling in-memory buffer only; `Print(msg)` does
+  that *and* prints to chat with the addon's color prefix.
 
-- XML defines UI layout; Lua (`AutoSetup_OptionsPanel_OnLoad`) wires event handlers
-- **Key patterns:**
-  - `ParseAddonsString()` / `BuildAddonsString()`: parse user input `"Guild, !Raid, WeakAuras"`
-  - `ResolveAddonNames()`: user types addon title ("WeakAuras") → resolves to folder name
-  - `ShowLayoutPopup()`: dropdown list of available Edit Mode layouts (from `C_EditMode.GetLayouts()`)
-  - `RefreshProfileList()`: renders scrollable profile list with edit/delete buttons
-- `GetLayoutNames()` loads Blizzard_EditMode if needed; iterates `C_EditMode.GetLayouts().layouts`
+## Common tasks
 
-### Reload Popup (`AutoSetup_ReloadPopup.xml`)
+**Add a new profile field**: default it in `EnsureProfile()` → wire a control
+in `AutoSetup_OptionsPanel_OnLoad()` → read/write it in the save button's
+`OnClick` → display it in `RefreshProfileList()`.
 
-- Appears when addons are changed for a profile
-- Two buttons: "ReloadUI" (calls `ExecuteImmediateAutoReload()`) or "Later"
-- Message is set in `OnLoad` script after 0.1s delay to ensure child elements exist
+**New WoW patch**: bump `## Interface:` in `AutoSetup.toc`; re-check that
+`C_AddOns`/`C_EditMode`/`C_UI` calls still resolve; watch for new
+combat-lockdown restrictions.
 
-## Critical Patterns & Developer Conventions
+## Debugging
 
-### WoW API Compatibility
-
-- **Modern Retail vs Legacy:** Always check for `C_AddOns` namespace first, fall back to global functions:
-  ```lua
-  local numAddons = (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns())
-                   or GetNumAddOns()
-  ```
-- **Runtime feature detection (recommended):** Prefer checking whether a function or table exists at runtime and provide a safe fallback. This reduces breakage when Blizzard moves a function between namespaces or deprecates it.
-  ```lua
-  local Reload = (C_UI and C_UI.Reload) or ReloadUI or function()
-      -- fallback: log or show a prompt to the user instead of erroring
-      print("Reload function not available; please reload manually")
-  end
-  ```
-- **Handling reload:** Multiple detection candidates (`C_UI.Reload`, `ReloadUI`, etc.); see `DetectReloadFunction()`
-- **Interface version:** Check `.toc` file (update `## Interface:` when required by patches)
-
-**API change checklist:** when a new WoW patch lands, verify the following before release:
-
-- Confirm `C_*` namespaces used in the addon still expose the expected functions.
-- Add or update runtime guards for any calls that may throw if missing.
-- Run the addon on the new client and capture any nil-index or missing global errors.
-- If an API was removed or renamed, prefer feature-detection fallbacks instead of hard assumptions.
-
-**Example — detecting Edit Mode layouts at runtime:**
-
-Sometimes `C_EditMode` or `C_EditMode.GetLayouts` may not be available immediately during startup. Use feature detection and/or listen for `EDIT_MODE_LAYOUTS_UPDATED` as a fallback to avoid nil-index errors:
-
-```lua
-local function GetLayoutsSafe()
-  if C_EditMode and C_EditMode.GetLayouts then
-    return C_EditMode.GetLayouts().layouts
-  else
-    -- Either load Blizzard_EditMode or register for EDIT_MODE_LAYOUTS_UPDATED and retry
-    return nil
-  end
-end
-
--- Example usage: attempt to fetch layouts, otherwise wait for the event
-if not GetLayoutsSafe() then
-  local f = CreateFrame("Frame")
-  f:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-  f:SetScript("OnEvent", function(self)
-    local layouts = GetLayoutsSafe()
-    if layouts then
-      -- proceed with layout population
-      self:UnregisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-    end
-  end)
-```
-
-### Combat Safety
-
-- **Never modify state in lockdown:** Always check `InCombatLockdown()` before changing layouts, addon state, or scale
-- Return silently if in combat; optionally log with `verbose` flag for debugging
-- Exception: Layout re-evaluation still runs in combat (read-only check of active layout)
-
-### Resolution Monitoring (Observe-Only)
-
-- Never call `SetCVar("gxResolution")` or change actual screen resolution
-- Detect via `GetPhysicalScreenSize()` → parse as `WIDTHxHEIGHT` string
-- Check every 5 seconds; apply profile when resolution changes
-
-### String Normalization for Layout Names
-
-- **`CleanString()`:** Remove color codes (`|cXXXXXXXX`, `|r`), links, trim, lowercase
-- Used to compare layout names from user input vs. system internals
-- Example: user types "My Layout" → cleaned to "my layout" → matched against system "My Layout" (cleaned to "my layout")
-- Store `lastAppliedLayoutClean` to avoid redundant layout switches
-
-### Debug Logging
-
-- In-memory rolling log (max 50 entries) stored in `debugLog` table
-- `/autosetup debug` displays current resolution + full debug log in chat
-- Use `Debug(msg)` for info, `Print(msg)` for user-facing messages (includes chat prefix)
-- Log timestamps on all entries for troubleshooting
-
-### Addon Set Application
-
-- **Quirk:** AutoSetup addon itself is never disabled even if listed with `!` prefix
-- Use `C_AddOns.GetAddOnEnableState()` (returns 0=disabled, 1=enabled by default, 2=enabled by user)
-- Only touch addons that appear in `profile.addonSet`; leave others untouched
-- If changes detected, show reload popup (not auto-reload immediately unless profile has `autoReload = true`)
-
-### XML Reference Pattern
-
-- XML children auto-registered by frame name prefix: `<EditBox name="$parentNameInput">` → accessible as `panel.nameInput` in Lua
-- See `AutoSetup_OptionsPanel_OnLoad()`: resolves all children by building names like `baseName .. "NameInput"`
-- Anchors use `relativeTo="$parent"` and `relativePoint` for responsive positioning
-
-## Testing & Debugging
-
-- **Debug logging:** Use `/autosetup debug` to dump resolution history and recent operations
-- **Manual reload test:** `/autosetup testreload` to test reload function detection (logs all attempts)
-- **Slash commands:** `/autosetup` or `/as` opens options panel
-- **Key WoW events to understand:**
-  - `ADDON_LOADED` – fires when addon loads; before SavedVariables are available
-  - `PLAYER_ENTERING_WORLD` – fires on login/zoning; 4-second delay before profile eval
-  - `EDIT_MODE_LAYOUTS_UPDATED` – fires when layouts change or EditMode loads
-  - `PLAYER_TARGET_CHANGED`, `PLAYER_SOFT_ENEMY_CHANGED` – trigger layout re-eval
-
-## Common Tasks
-
-**Adding a new profile field:**
-
-1. Add to profile structure in `EnsureProfile()`
-2. Update `RefreshProfileList()` to display it
-3. Wire UI control in `AutoSetup_OptionsPanel_OnLoad()`
-4. Add save logic in saveButton's `OnClick` handler
-
-**Debugging profile not applying:**
-
-1. Run `/autosetup debug` → check if resolution string matches a saved profile key
-2. Verify `PLAYER_ENTERING_WORLD` fired (4s delay applies profile)
-3. If in combat, layout/addon changes are skipped (expected behavior)
-4. Check `debugLog` for `"Switching to Edit Mode layout"` line; if missing, layout not found
-
-**Handling new WoW patches:**
-
-- Update `## Interface:` in `.toc` file
-- Test addon API calls (especially `C_AddOns`, `C_EditMode`, `C_UI.Reload`)
-- Check for conflicts with new combat-lockdown restrictions
-
-## Key Files Reference
-
-- [AutoSetup.lua](AutoSetup.lua) – Core event loop, profile evaluation, layout/addon/scale application
-- [AutoSetup_Options.lua](FrameXML/AutoSetup_Options.lua) – Options UI controller (profile CRUD, layout picker)
-- [AutoSetup_Options.xml](FrameXML/AutoSetup_Options.xml) – Options panel layout definition
-- [AutoSetup_ReloadPopup.xml](FrameXML/AutoSetup_ReloadPopup.xml) – Reload confirmation dialog
-- [AutoSetup.toc](AutoSetup.toc) – Addon metadata and load order
-- [README.md](README.md) – User-facing feature documentation
+- `/autosetup` or `/as` — opens the options panel.
+- `/autosetup debug` — prints current resolution + the rolling debug log.
+- `/autosetup testreload` — runs the real `AutoSetup.ExecuteReload()` path
+  (will actually reload the UI unless you're in combat).

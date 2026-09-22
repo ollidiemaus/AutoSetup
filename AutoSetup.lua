@@ -6,12 +6,14 @@
 
 local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
+_G.AutoSetup = AutoSetup -- expose to XML <OnClick>/<OnLoad> scripts, which only see globals
 
 local defaultDB = {}
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- guards one‑time initialization on login
 local lastAppliedLayoutClean = nil -- last layout name we actually selected (CleanString)
+local currentSuppressChat = false  -- cached from the last-applied profile; read by the AddMessage hook
 
 -------------------------------------------------------------------------------
 -- Utility helpers
@@ -32,40 +34,6 @@ end
 -- expose for other files (e.g. options panel)
 AutoSetup.Debug = Debug
 AutoSetup.Print = Print
-
--- Comprehensive reload function detection and execution
-local detectedReloadFunction = nil
-local function DetectReloadFunction()
-    if detectedReloadFunction then return detectedReloadFunction end
-
-    Debug("Detecting available reload functions...")
-
-    -- Test multiple reload function candidates (correct WoW API functions)
-    local reloadCandidates = {
-        { name = "C_UI.Reload",     func = C_UI and C_UI.Reload }, -- Modern WoW API (correct)
-        { name = "global ReloadUI", func = _G.ReloadUI },          -- Legacy function
-        { name = "direct ReloadUI", func = ReloadUI },             -- Direct reference
-        { name = "Reload",          func = _G.Reload },            -- Alternative name
-    }
-
-    for _, candidate in ipairs(reloadCandidates) do
-        if candidate.func and type(candidate.func) == "function" then
-            Debug("Found candidate: " .. candidate.name)
-            -- Just check if it's a function, don't execute it during detection
-            if type(candidate.func) == "function" then
-                Debug("SUCCESS: " .. candidate.name .. " is available")
-                detectedReloadFunction = candidate.func
-                Debug("Using " .. candidate.name .. " for auto-reload")
-                return detectedReloadFunction
-            end
-        else
-            Debug("SKIPPED: " .. candidate.name .. " - not available")
-        end
-    end
-
-    Debug("No working reload function found!")
-    return nil
-end
 
 -- Strip color codes, links, textures and braces and lowercase the result.
 -- Used for both input strings and system messages.
@@ -101,6 +69,8 @@ local function GetCurrentResolution()
     return rawRes:match("%d+x%d+") or "Unknown"
 end
 
+AutoSetup.GetCurrentResolution = GetCurrentResolution
+
 -------------------------------------------------------------------------------
 -- SavedVariables helpers
 -------------------------------------------------------------------------------
@@ -132,6 +102,50 @@ end
 AutoSetup.GetDB = GetDB
 AutoSetup.GetProfileForResolution = GetProfileForResolution
 AutoSetup.EnsureProfile = EnsureProfile
+
+-------------------------------------------------------------------------------
+-- AddOn iteration helpers (shared with the options panel)
+-------------------------------------------------------------------------------
+
+local function GetAddOnCount()
+    return (C_AddOns and C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or GetNumAddOns()
+end
+
+local function GetAddOnNameAndTitle(index)
+    if C_AddOns and C_AddOns.GetAddOnInfo then
+        return C_AddOns.GetAddOnInfo(index)
+    end
+    return GetAddOnInfo(index)
+end
+
+local function GetEnabledState(name, index)
+    if C_AddOns and C_AddOns.GetAddOnEnableState then
+        -- Retail-style API: first argument is the addon name or index
+        return C_AddOns.GetAddOnEnableState(name or index) > 0
+    else
+        local _, _, _, enabled = GetAddOnInfo(name or index)
+        return not not enabled
+    end
+end
+
+local function EnableAddon(name, index)
+    if C_AddOns and C_AddOns.EnableAddOn then
+        C_AddOns.EnableAddOn(name or index)
+    else
+        EnableAddOn(name or index)
+    end
+end
+
+local function DisableAddon(name, index)
+    if C_AddOns and C_AddOns.DisableAddOn then
+        C_AddOns.DisableAddOn(name or index)
+    else
+        DisableAddOn(name or index)
+    end
+end
+
+AutoSetup.GetAddOnCount = GetAddOnCount
+AutoSetup.GetAddOnNameAndTitle = GetAddOnNameAndTitle
 
 -------------------------------------------------------------------------------
 -- Edit Mode layout switching
@@ -205,37 +219,23 @@ end
 -- The AutoSetup addon itself is never disabled even if specified.
 -------------------------------------------------------------------------------
 
--- Auto-reload helper functions removed; automated reloads are disabled in favor of the popup.
-
-
--- Execute reload function with proper detection
-local function ExecuteReload()
+-- Reload UI, respecting combat lockdown. This is the one code path used by
+-- both the reload popup's button and the /autosetup testreload debug command.
+function AutoSetup.ExecuteReload()
     if InCombatLockdown() then
         Debug("Cannot reload UI in combat. Reload skipped.")
         Print("Cannot reload UI in combat. Reload skipped.")
         return
     end
 
-    -- Detect the best available reload function
-    local reloadFunction = DetectReloadFunction()
-
-    if not reloadFunction then
+    Debug("Executing UI reload...")
+    if ReloadUI then
+        ReloadUI()
+    elseif C_UI and C_UI.Reload then
+        C_UI.Reload()
+    else
         Debug("ERROR: No reload function available!")
         Print("ERROR: No reload function available for reload")
-        return
-    end
-
-    Debug("Executing ReloadUI()...")
-    Print("Reloading UI...")
-
-    -- Execute the reload
-    local success, err = pcall(reloadFunction)
-    if success then
-        Debug("SUCCESS: UI reload completed!")
-        Print("UI reload completed successfully!")
-    else
-        Debug("FAILED: " .. tostring(err))
-        Print("FAILED: " .. tostring(err))
     end
 end
 
@@ -261,34 +261,6 @@ local function ShowReloadPopup(profile)
     end
 end
 
--- Manual test function for reload functionality
-local function TestReloadFunction()
-    Debug("=== MANUAL RELOAD TEST ===")
-    Debug("Testing reload function manually...")
-
-    -- Detect available reload function
-    local reloadFunction = DetectReloadFunction()
-
-    if not reloadFunction then
-        Debug("ERROR: No reload function available!")
-        Print("ERROR: No reload function available for manual test")
-        return
-    end
-
-    Debug("Using function: " .. (detectedReloadFunction == C_UI.Reload and "C_UI.Reload()" or "ReloadUI()"))
-
-    -- Test immediate execution
-    Debug("Testing immediate execution...")
-    local success, err = pcall(reloadFunction)
-    if success then
-        Debug("SUCCESS: Manual reload worked immediately!")
-        Print("SUCCESS: Manual reload worked immediately!")
-    else
-        Debug("FAILED: " .. tostring(err))
-        Print("FAILED: " .. tostring(err))
-    end
-end
-
 local function ApplyAddonSet(profile, verbose)
     if not profile or not profile.addonSet then return end
     if InCombatLockdown() then
@@ -297,37 +269,11 @@ local function ApplyAddonSet(profile, verbose)
     end
 
     local addonSet = profile.addonSet
-    local numAddOns = (C_AddOns.GetNumAddOns and C_AddOns.GetNumAddOns()) or GetNumAddOns()
+    local numAddOns = GetAddOnCount()
     local changed = false
 
-    local function GetEnabledState(name, index)
-        if C_AddOns and C_AddOns.GetAddOnEnableState then
-            -- Retail-style API: first argument is the addon name or index
-            return C_AddOns.GetAddOnEnableState(name or index) > 0
-        else
-            local _, _, _, enabled = GetAddOnInfo(name or index)
-            return not not enabled
-        end
-    end
-
-    local function EnableAddon(name, index)
-        if C_AddOns and C_AddOns.EnableAddOn then
-            C_AddOns.EnableAddOn(name or index)
-        else
-            EnableAddOn(name or index)
-        end
-    end
-
-    local function DisableAddon(name, index)
-        if C_AddOns and C_AddOns.DisableAddOn then
-            C_AddOns.DisableAddOn(name or index)
-        else
-            DisableAddOn(name or index)
-        end
-    end
-
     for i = 1, numAddOns do
-        local name = (C_AddOns and C_AddOns.GetAddOnInfo and C_AddOns.GetAddOnInfo(i)) or select(1, GetAddOnInfo(i))
+        local name = GetAddOnNameAndTitle(i)
         if name then
             local desired = addonSet[name]
             if desired ~= nil then
@@ -393,6 +339,7 @@ local function EvaluateProfileState(verbose)
     lastResolution = res
 
     local profile = GetProfileForResolution(res)
+    currentSuppressChat = profile and profile.suppressChat or false
     if not profile then
         if verbose then Print("No AutoSetup profile for resolution " .. res .. ".") end
         return
@@ -445,24 +392,20 @@ local originalAddMessage = ChatFrame1 and ChatFrame1.AddMessage
 
 if originalAddMessage then
     ChatFrame1.AddMessage = function(self, text, ...)
-        if AutoSetupDB and text then
-            local res = GetCurrentResolution()
-            local profile = AutoSetupDB[res]
-            if profile and profile.suppressChat then
-                local cleanText = StripEscapes(text)
-                local formatStr = ERR_EDIT_MODE_LAYOUT_APPLIED
+        if currentSuppressChat and text then
+            local cleanText = StripEscapes(text)
+            local formatStr = ERR_EDIT_MODE_LAYOUT_APPLIED
 
-                if formatStr then
-                    local cleanFormat = StripEscapes(formatStr)
-                    local prefix = strsplit("%", cleanFormat)
-                    if prefix and prefix ~= "" and string.find(cleanText, prefix, 1, true) then
-                        return
-                    end
-                end
-
-                if string.find(cleanText, "edit mode layout", 1, true) then
+            if formatStr then
+                local cleanFormat = StripEscapes(formatStr)
+                local prefix = strsplit("%", cleanFormat)
+                if prefix and prefix ~= "" and string.find(cleanText, prefix, 1, true) then
                     return
                 end
+            end
+
+            if string.find(cleanText, "edit mode layout", 1, true) then
+                return
             end
         end
         return originalAddMessage(self, text, ...)
@@ -482,6 +425,8 @@ eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
 eventFrame:RegisterEvent("PLAYER_SOFT_ENEMY_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
+eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
@@ -494,7 +439,18 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end
         Debug("AutoSetup loaded.")
 
-        C_Timer.NewTicker(5.0, CheckResolutionChange)
+        -- Prime the chat-suppression cache immediately so it's correct before
+        -- the first real EvaluateProfileState runs a few seconds from now.
+        local primingProfile = GetProfileForResolution(GetCurrentResolution())
+        currentSuppressChat = primingProfile and primingProfile.suppressChat or false
+
+        -- Safety-net fallback: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED should catch most
+        -- resolution/scale changes immediately; this ticker exists for cases those
+        -- events don't fire reliably (e.g. some external/alt-tab monitor changes).
+        C_Timer.NewTicker(20.0, CheckResolutionChange)
+    elseif event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
+        -- Small defer: the new size/scale may lag the event by a frame.
+        C_Timer.After(0.1, CheckResolutionChange)
     elseif event == "PLAYER_ENTERING_WORLD" then
         initDone = false
         local res = GetCurrentResolution()
@@ -537,7 +493,7 @@ SlashCmdList["AUTOSETUP"] = function(msg)
         end
         return
     elseif msg == "testreload" then
-        TestReloadFunction()
+        AutoSetup.ExecuteReload()
         return
     end
 

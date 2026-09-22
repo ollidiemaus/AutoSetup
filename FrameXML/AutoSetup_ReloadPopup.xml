@@ -87,8 +87,12 @@
                 </Anchors>
                 <Scripts>
                     <OnClick>
-                        -- Call the standard reload function directly.
-                        if ReloadUI then
+                        -- Go through AutoSetup.ExecuteReload() so the combat-lockdown
+                        -- guard applies here too; fall back to a direct call only if
+                        -- the AutoSetup table is somehow unavailable.
+                        if AutoSetup and AutoSetup.ExecuteReload then
+                            AutoSetup.ExecuteReload()
+                        elseif ReloadUI then
                             ReloadUI()
                         elseif C_UI and C_UI.Reload then
                             C_UI.Reload()
@@ -96,7 +100,7 @@
                     </OnClick>
                 </Scripts>
             </Button>
-            
+
             <!-- Later Button -->
             <Button name="$parentLaterButton" inherits="GameMenuButtonTemplate" text="Later">
                 <Size>
