@@ -259,12 +259,13 @@ local function RefreshProfileList(panel)
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = data.addonSet and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "default"
+        local controllerText = data.nativeControllerSupport and " | |cff00ff00Controller|r" or ""
 
         row.text:SetText(displayName)
         row.subtext:SetText(res ..
             "\nBase: " ..
             (data.editLayoutBase or "?") ..
-            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons)
+            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText)
 
         row.delBtn:SetScript("OnClick", function()
             AutoSetupDB[res] = nil
@@ -279,6 +280,7 @@ local function RefreshProfileList(panel)
             panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
             panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
             panel.suppressCheck:SetChecked(data.suppressChat or false)
+            if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet))
         end)
 
@@ -337,10 +339,12 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.nameInput           = _G[baseName .. "NameInput"]
     panel.resInput            = _G[baseName .. "ResInput"]
     panel.baseLayoutInput     = _G[baseName .. "BaseLayoutInput"]
+    panel.baseLayoutLabel     = _G[baseName .. "BaseLayoutLabel"]
     panel.targetLayoutInput   = _G[baseName .. "TargetLayoutInput"]
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
     panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"]
     panel.suppressCheck       = _G[baseName .. "SuppressCheck"]
+    panel.controllerCheck     = _G[baseName .. "ControllerCheck"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
     panel.saveButton          = _G[baseName .. "SaveButton"]
     panel.clearButton         = _G[baseName .. "ClearButton"]
@@ -362,6 +366,24 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
 
     if panel.suppressCheck and panel.suppressCheck.Text then
         panel.suppressCheck.Text:SetText("Suppress 'layout applied' chat messages")
+    end
+
+    -- Native controller support only exists on WoW Forever; hide the option entirely elsewhere
+    -- rather than showing a checkbox for a setting the current flavor doesn't have.
+    if panel.controllerCheck then
+        if AutoSetup.isForever then
+            if panel.controllerCheck.Text then
+                panel.controllerCheck.Text:SetText("Enable native controller support")
+            end
+        else
+            panel.controllerCheck:Hide()
+        end
+    end
+
+    if panel.baseLayoutLabel then
+        panel.baseLayoutLabel:SetText(AutoSetup.isForever
+            and "Base Edit Mode Layout Name (blank = controller default)"
+            or "Base Edit Mode Layout Name")
     end
 
 
@@ -392,19 +414,25 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             local targetLayout = panel.targetLayoutInput:GetText() or ""
             local scale = tonumber(string.format("%.2f", panel.scaleSlider:GetValue()))
             local suppress = panel.suppressCheck:GetChecked() and true or false
+            local controllerSupport = panel.controllerCheck and panel.controllerCheck:GetChecked() and true or false
             local addonsStr = panel.addonsInput:GetText() or ""
 
-            if res == "" or baseLayout == "" then
-                ASP("Please enter a resolution and a base Edit Mode layout name.")
+            if res == "" then
+                ASP("Please enter a resolution.")
+                return
+            end
+            if baseLayout == "" and not controllerSupport then
+                ASP("Please enter a base Edit Mode layout name, or enable native controller support.")
                 return
             end
 
             local profile = AutoSetup.EnsureProfile(res)
             profile.name = (name ~= "" and name) or ("Profile " .. res)
-            profile.editLayoutBase = baseLayout
+            profile.editLayoutBase = (baseLayout ~= "" and baseLayout) or nil
             profile.editLayoutTarget = (targetLayout ~= "" and targetLayout) or nil
             profile.scale = scale
             profile.suppressChat = suppress
+            profile.nativeControllerSupport = controllerSupport
             profile.addonSet = ResolveAddonNames(ParseAddonsString(addonsStr))
 
             ASP("Saved AutoSetup profile for " .. res .. ".")
@@ -420,6 +448,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             panel.targetLayoutInput:SetText("")
             panel.scaleSlider:SetValue(tonumber(GetCVar("uiScale")) or 1.0)
             panel.suppressCheck:SetChecked(false)
+            if panel.controllerCheck then panel.controllerCheck:SetChecked(false) end
             panel.addonsInput:SetText("")
         end)
     end

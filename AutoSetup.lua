@@ -8,12 +8,33 @@ local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
 _G.AutoSetup = AutoSetup -- expose to XML <OnClick>/<OnLoad> scripts, which only see globals
 
+-- WoW flavor detection (same pattern used in AutoPotion's Core/Constants.lua).
+-- WOW_PROJECT_ID has no documented constant for WoW Forever yet (confirmed in-game via
+-- /dump WOW_PROJECT_ID, which currently reports 1/WOW_PROJECT_MAINLINE on the Forever beta
+-- client, since Forever runs on the Mainline client codebase). Detect it via interface number
+-- instead: interface numbers are 5 digits (e.g. 16001 for client 1.60.1); the 16000-19999 range
+-- is reserved for Forever ahead of BCC's 20000+, matching the detection used by DBM and
+-- Details-Framework/Plater.
+local _, _, _, tocVersion = GetBuildInfo()
+AutoSetup.isForever = (tocVersion and tocVersion >= 16000 and tocVersion < 20000) or false
+
+-- Forever shares WOW_PROJECT_MAINLINE with Retail, but its content/feature set is not
+-- Retail's, so exclude it here to keep any "if AutoSetup.isRetail" check Forever-safe.
+AutoSetup.isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and not AutoSetup.isForever
+
 local defaultDB = {}
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- guards one‑time initialization on login
 local lastAppliedLayoutClean = nil -- last layout name we actually selected (CleanString)
 local currentSuppressChat = false  -- cached from the last-applied profile; read by the AddMessage hook
+local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
+local controllerSupportChangedThisSession = false -- true once we've SetCVar'd this session; Edit Mode won't offer the new mode's layouts until the next reload
+
+-- Native controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
+-- toggling the setting in Forever's Options menu -- the only line that changed was
+-- InputDeviceInterfaceStyle going from unset (default 0) to "1".
+local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
 
 -------------------------------------------------------------------------------
 -- Utility helpers
@@ -94,6 +115,7 @@ local function EnsureProfile(resolution)
         editLayoutTarget = nil,
         scale = nil,
         suppressChat = false,
+        nativeControllerSupport = false,
         addonSet = nil, -- [addonName] = true/false
     }
     return db[resolution]
@@ -239,25 +261,34 @@ function AutoSetup.ExecuteReload()
     end
 end
 
--- Show reload required popup
-local function ShowReloadPopup(profile)
-    -- The XML frame should already be loaded and available
-    if AutoSetupReloadPopup then
-        -- Update message with profile info if available
-        if profile and profile.name then
-            AutoSetupReloadPopupMessage:SetText("AddOn configuration has changed for '" ..
-                profile.name .. "'.\nA UI reload is required to apply changes.")
-        else
-            AutoSetupReloadPopupMessage:SetText(
-                "AddOn configuration has changed.\nA UI reload is required to apply changes.")
-        end
+-- Multiple independent things can require a reload at once (addon set, controller support).
+-- Track each by a stable key so they combine into one popup listing every reason instead of
+-- overwriting each other. Reset naturally on the next reload since this is a fresh session.
+local pendingReloadReasons = {} -- key -> reason text
 
-        -- Show the popup
-        AutoSetupReloadPopup:Show()
+local function RefreshReloadPopupText()
+    local lines = {}
+    for _, text in pairs(pendingReloadReasons) do
+        table.insert(lines, "- " .. text)
+    end
+    table.sort(lines)
+
+    if AutoSetupReloadPopup then
+        AutoSetupReloadPopupMessage:SetText("A UI reload is required:\n" .. table.concat(lines, "\n"))
     else
-        -- Fallback to old method if XML frame not available
         Debug("AutoSetupReloadPopup XML frame not available, using fallback")
-        Print("AutoSetupReloadPopup XML frame not available")
+        Print("A UI reload is required: " .. table.concat(lines, "; "))
+    end
+end
+
+-- Request a reload for a specific, stable `key` (e.g. "addonset", "controller"), with a short
+-- human-readable `reason` explaining exactly why. Calling this again with the same key just
+-- updates that one line rather than adding a duplicate.
+local function ShowReloadPopup(key, reason)
+    pendingReloadReasons[key] = reason
+    RefreshReloadPopupText()
+    if AutoSetupReloadPopup then
+        AutoSetupReloadPopup:Show()
     end
 end
 
@@ -298,7 +329,7 @@ local function ApplyAddonSet(profile, verbose)
     if changed then
         Debug("AddOn changes detected: Showing reload popup")
         -- Show popup instead of auto-reload
-        ShowReloadPopup(profile)
+        ShowReloadPopup("addonset", "AddOn configuration changed for '" .. (profile.name or "this profile") .. "'.")
 
         if verbose then
             Print("AddOn configuration changed for this resolution. Please click 'Reload UI' to apply changes.")
@@ -334,6 +365,53 @@ local function ApplyScale(profile, verbose)
     end
 end
 
+-- Returns true when Edit Mode should be left alone this cycle because the input mode
+-- (keyboard/mouse vs. controller) isn't confirmed settled yet -- either we just changed it
+-- ourselves this session (Edit Mode won't offer the new mode's layouts until the next reload),
+-- or we're blocked from changing it live and it still doesn't match the profile.
+local function ApplyControllerSupport(profile, verbose)
+    if not profile or not AutoSetup.isForever then return false end
+
+    local desired = profile.nativeControllerSupport or false
+    local current = (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
+
+    if desired == current then
+        lastAppliedControllerSupport = desired
+        return controllerSupportChangedThisSession
+    end
+
+    -- InputDeviceInterfaceStyle is a protected CVar. Confirmed in-game: WoW allows an addon to
+    -- set it during the initial post-login/reload evaluation (verbose == true, see
+    -- EvaluateProfileState's callers), but blocks it later in a live session (e.g. triggered by
+    -- a resolution change) with "Interface action failed because of an addon". Either way,
+    -- setting the CVar alone doesn't make it take functional effect -- confirmed in-game that a
+    -- reload is still needed afterwards, so apply it as soon as we're able to, then always ask
+    -- for that follow-up reload.
+    local justApplied = false
+    if verbose and not InCombatLockdown() then
+        Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
+        SetCVar(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
+        controllerSupportChangedThisSession = true
+        justApplied = true
+    end
+
+    local isNewMismatch = (lastAppliedControllerSupport ~= desired)
+    lastAppliedControllerSupport = desired
+
+    if isNewMismatch then
+        if justApplied then
+            ShowReloadPopup("controller", "Native controller support was just set to " ..
+                (desired and "ON" or "OFF") .. " for '" .. (profile.name or "this profile") ..
+                "'. Reload once more to finish applying it.")
+        else
+            ShowReloadPopup("controller", "Controller support should be " .. (desired and "ON" or "OFF") ..
+                " for '" .. (profile.name or "this profile") .. "'.")
+        end
+    end
+
+    return true
+end
+
 local function EvaluateProfileState(verbose)
     local res = GetCurrentResolution()
     lastResolution = res
@@ -353,15 +431,26 @@ local function EvaluateProfileState(verbose)
     local hasTarget = UnitExists("target")
     local hasSoftTarget = UnitExists("softenemy")
 
-    local layoutToUse = profile.editLayoutBase
-    if (inCombat or hasTarget or hasSoftTarget) and profile.editLayoutTarget and profile.editLayoutTarget ~= "" then
-        layoutToUse = profile.editLayoutTarget
+    -- Native controller support uses its own hidden default Edit Mode layout that isn't
+    -- selectable from GetLayouts() and can't coexist with a keyboard/mouse layout, so leave
+    -- Edit Mode alone entirely for these profiles and let the client manage it. Only relevant
+    -- on WoW Forever, which is the only flavor with this setting -- on any other flavor,
+    -- ignore a stale/irrelevant nativeControllerSupport value and apply layout normally.
+    local layoutToUse = nil
+    if not (AutoSetup.isForever and profile.nativeControllerSupport) then
+        layoutToUse = profile.editLayoutBase
+        if (inCombat or hasTarget or hasSoftTarget) and profile.editLayoutTarget and profile.editLayoutTarget ~= "" then
+            layoutToUse = profile.editLayoutTarget
+        end
     end
 
     ApplyScale(profile, verbose)
+    local inputModeUnsettled = ApplyControllerSupport(profile, verbose)
 
-    -- Avoid redundant layout switches and chat spam if we already applied this layout
-    if layoutToUse and layoutToUse ~= "" then
+    -- Avoid redundant layout switches and chat spam if we already applied this layout.
+    -- Also skip while the keyboard/mouse vs. controller mode isn't confirmed settled yet
+    -- (see ApplyControllerSupport) -- Edit Mode won't offer the right layouts until then.
+    if not inputModeUnsettled and layoutToUse and layoutToUse ~= "" then
         local layoutClean = CleanString(layoutToUse)
         if layoutClean ~= "" and layoutClean ~= lastAppliedLayoutClean then
             ApplyEditLayout(layoutToUse, verbose)

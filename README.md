@@ -8,6 +8,8 @@ AutoSetup is a World of Warcraft addon that automatically applies **per‑resolu
 
 When you play on different devices (e.g. PC monitor, laptop, Steam Deck, TV) that run WoW at different resolutions, AutoSetup detects the current resolution and applies the right profile without you touching Edit Mode or the AddOns screen.
 
+Works on Retail and WoW Forever.
+
 ---
 
 ### Why this addon exists
@@ -46,6 +48,11 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 - **Chat noise control**
   - Optional flag to suppress “Edit Mode layout applied” messages in chat.
 
+- **Native controller support per profile (WoW Forever only)**
+  - Optional flag marking whether a profile expects WoW Forever's built-in native controller support to be on or off (e.g. on for a Steam Deck/couch profile, off for a mouse-and-keyboard profile).
+  - This setting doesn't exist on any other flavor, so the checkbox is hidden entirely unless AutoSetup detects it's running on Forever.
+  - The underlying setting is a protected CVar that Blizzard only allows addons to change during the initial evaluation right after login/reload, so switching it takes **two reloads**: the first login/reload where AutoSetup detects the mismatch applies the CVar and asks you to reload again; the second reload is where it actually takes functional effect. AutoSetup shows the same "reload required" popup used for AddOn changes at each step (with wording specific to which step you're on), and leaves Edit Mode untouched the whole time until the mode switch is fully confirmed.
+
 - **Non‑intrusive behavior**
   - Never changes your actual resolution; it only **observes** it.
   - Skips layout and addon changes in combat to avoid taint.
@@ -77,21 +84,25 @@ In the options panel:
    - Any descriptive name (e.g. `PC 1440p`, `Steam Deck`, `Laptop`).
 3. **Base Edit Mode layout**
    - Either type the layout name or click **Pick Layout** to choose from existing Edit Mode layouts.
+   - Leave blank if this profile has native controller support enabled: controller mode uses its own hidden default layout that doesn't appear in the layout picker, and a keyboard/mouse layout can't be applied while controller mode is active anyway. AutoSetup skips Edit Mode entirely for such profiles and lets the client manage it.
 4. **Target layout (optional)**
    - Optional alternate layout used while in combat or when you have a target.
-   - Leave blank if you only want one layout for this resolution.
+   - Leave blank if you only want one layout for this resolution, or if this profile has native controller support enabled (same reason as above).
 5. **UI Scale**
    - Adjust the slider if you want a per‑profile UI scale override.
 6. **Suppress chat**
    - Check to hide Edit Mode "layout applied" spam in chat when this profile is active.
-7. **AddOns**
+7. **Enable native controller support** (only shown on WoW Forever)
+   - Check this if the profile expects WoW Forever's native controller support to be on (leave unchecked for keyboard/mouse profiles).
+   - Takes two reloads to fully apply: AutoSetup sets the CVar as soon as it can (on the next login/reload after a mismatch is detected) and asks you to reload once more for it to actually take effect. Blizzard also blocks addons from changing this setting live mid-session (e.g. right when you switch resolutions), so in that case AutoSetup shows the reload popup first to get that initial reload going. Edit Mode is left alone the whole time until the mode switch is fully confirmed.
+8. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
      - `WeakAuras, !Details, !Midnight Viewport`
    - `Name` = enable that addon
    - `!Name` = disable that addon
    - Names can be either **folder names** or **titles** from the AddOns list; the addon resolves them internally.
-8. Click **Save / Update** to store the profile for that resolution.
+9. Click **Save / Update** to store the profile for that resolution.
 
 Saved profiles are listed in the scrollable list at the bottom:
 
@@ -114,7 +125,7 @@ Saved profiles are listed in the scrollable list at the bottom:
 - When combat/target state changes:
   - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed.
 
-If AutoSetup detects that addons were changed for a profile, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient.
+If AutoSetup detects that addons or native controller support need to change for a profile, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
 
 ---
 

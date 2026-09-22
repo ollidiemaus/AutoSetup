@@ -135,7 +135,7 @@
             <Frame>
                 <Layers>
                     <Layer level="ARTWORK">
-                        <FontString inherits="GameFontNormal" text="Base Edit Mode Layout Name">
+                        <FontString name="$parentBaseLayoutLabel" inherits="GameFontNormal" text="Base Edit Mode Layout Name">
                             <Anchors>
                                 <!-- Label above the input -->
                                 <Anchor point="BOTTOMLEFT" relativeTo="$parentBaseLayoutInput" relativePoint="TOPLEFT">
@@ -231,6 +231,16 @@
                 </Anchors>
             </CheckButton>
 
+            <!-- Native controller support (WoW Forever) -->
+            <CheckButton name="$parentControllerCheck" inherits="ChatConfigCheckButtonTemplate">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativeTo="$parentSuppressCheck" relativePoint="BOTTOMLEFT">
+                        <Offset>
+                            <AbsDimension x="0" y="-5"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </CheckButton>
 
             <!-- Addons input -->
             <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiLine="true">
@@ -240,7 +250,7 @@
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
-                            <AbsDimension x="20" y="-315"/>
+                            <AbsDimension x="20" y="-335"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
@@ -272,7 +282,7 @@
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
-                            <AbsDimension x="20" y="-395"/>
+                            <AbsDimension x="20" y="-415"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
