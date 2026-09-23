@@ -1,6 +1,6 @@
 ## Interface: 120100
 ## Interface-Forever: 16001
-## Version: 0.1.1
+## Version: 0.1.2
 ## Title: AutoSetup
 ## Author: ollidiemaus
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
