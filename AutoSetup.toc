@@ -5,6 +5,7 @@
 ## Author: ollidiemaus
 ## Notes: Resolution-based Edit Mode layout + AddOn profiles
 ## SavedVariables: AutoSetupDB
+## IconTexture: Interface\AddOns\AutoSetup\Media\Icon
 ## X-Curse-Project-ID: 1454790
 ## X-Wago-ID: nKW3ZZKE
 
