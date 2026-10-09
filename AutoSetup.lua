@@ -117,6 +117,7 @@ local function EnsureProfile(resolution)
         suppressChat = false,
         nativeControllerSupport = false,
         addonSet = nil, -- [addonName] = true/false
+        featureSet = nil, -- ["Addon:feature"] = true/false
     }
     return db[resolution]
 end
@@ -341,6 +342,49 @@ local function ApplyAddonSet(profile, verbose)
 end
 
 -------------------------------------------------------------------------------
+-- Addon feature switching
+-- Profile.featureSet format:
+--   ["ForeverQoL:viewport"] = true  -- ensure the feature is on
+--   ["ForeverQoL:viewport"] = false -- ensure the feature is off
+-- Unlike addonSet this needs no reload: the provider addon applies the change live. Only features
+-- that appear in featureSet are touched. If the provider isn't loaded (not installed, disabled, or
+-- just enabled by this same profile and waiting for a reload) the entry is skipped.
+-------------------------------------------------------------------------------
+
+-- Addons that let AutoSetup switch their features: addon folder name -> name of the global API
+-- table. The API provides IsFeatureEnabled(feature) (nil for an unknown feature) and
+-- SetFeatureEnabled(feature, enabled).
+AutoSetup.FeatureProviders = {
+    ForeverQoL = "ForeverQoLAPI",
+}
+
+-- "ForeverQoL:viewport" -> "ForeverQoL", "viewport". nil when the key has no feature part.
+function AutoSetup.SplitFeatureKey(key)
+    local provider, feature = tostring(key):match("^(.-):([^:]+)$")
+    if provider and provider ~= "" then
+        return provider, feature
+    end
+    return nil
+end
+
+local function ApplyFeatureSet(profile, verbose)
+    if not profile or not profile.featureSet then return end
+
+    for key, desired in pairs(profile.featureSet) do
+        local provider, feature = AutoSetup.SplitFeatureKey(key)
+        local api = provider and AutoSetup.FeatureProviders[provider] and _G[AutoSetup.FeatureProviders[provider]]
+        if not api then
+            if verbose then Debug("Feature provider not loaded, skipping: " .. tostring(key)) end
+        elseif api.IsFeatureEnabled(feature) == nil then
+            if verbose then Print("Unknown feature '" .. feature .. "' for " .. provider .. " in this profile.") end
+        elseif api.IsFeatureEnabled(feature) ~= desired then
+            api.SetFeatureEnabled(feature, desired)
+            Debug("Feature " .. key .. " set to " .. tostring(desired))
+        end
+    end
+end
+
+-------------------------------------------------------------------------------
 -- UI scale + profile evaluation
 -------------------------------------------------------------------------------
 
@@ -458,6 +502,7 @@ local function EvaluateProfileState(verbose)
     end
 
     ApplyAddonSet(profile, verbose)
+    ApplyFeatureSet(profile, verbose)
 end
 
 -------------------------------------------------------------------------------
