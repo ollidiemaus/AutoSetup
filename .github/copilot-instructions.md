@@ -53,6 +53,7 @@ profile = {
   scale = 0.85,                         -- optional UI scale override
   suppressChat = true,                  -- suppress "layout applied" chat messages
   addonSet = { AddonName = true/false }, -- only listed addons are touched
+  featureSet = { ["Addon:feature"] = true/false }, -- single addon features, applied live (no reload)
 }
 ```
 
@@ -82,6 +83,15 @@ profile = {
   with `!`.
 - `Debug(msg)` logs to the rolling in-memory buffer only; `Print(msg)` does
   that *and* prints to chat with the addon's color prefix.
+
+## Addon features
+
+`featureSet` entries (typed into the same AddOns box as `ForeverQoL:viewport` / `!ForeverQoL:viewport`)
+are applied by `ApplyFeatureSet` through a provider addon's public API. Providers are registered in
+`AutoSetup.FeatureProviders` (folder name -> global API table name); the API must offer
+`IsFeatureEnabled(feature)` (nil for unknown features) and `SetFeatureEnabled(feature, enabled)`.
+Entries whose provider isn't loaded are skipped silently. To support another addon, add it to
+`FeatureProviders` and give that addon such an API.
 
 ## Common tasks
 

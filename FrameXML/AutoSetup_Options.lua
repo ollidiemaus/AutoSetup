@@ -32,14 +32,15 @@ local function ParseAddonsString(str)
     return next(map) and map or nil
 end
 
-local function BuildAddonsString(tbl)
-    if not tbl then return "" end
+local function BuildAddonsString(...)
     local parts = {}
-    for name, enabled in pairs(tbl) do
-        if enabled then
-            table.insert(parts, name)
-        else
-            table.insert(parts, "!" .. name)
+    for _, tbl in ipairs({ ... }) do
+        for name, enabled in pairs(tbl) do
+            if enabled then
+                table.insert(parts, name)
+            else
+                table.insert(parts, "!" .. name)
+            end
         end
     end
     table.sort(parts)
@@ -54,40 +55,63 @@ local function ASP(msg)
     end
 end
 
+-- Find the installed addon matching a user-entered name or title (case-insensitive).
+-- Returns its folder name, or nil.
+local function ResolveAddonName(userName)
+    local lowerUser = string.lower(userName)
+    local getCount = AutoSetup.GetAddOnCount
+    local getInfo = AutoSetup.GetAddOnNameAndTitle
+    local numAddOns = getCount and getCount() or ((GetNumAddOns and GetNumAddOns()) or 0)
+
+    for i = 1, numAddOns do
+        local name, title
+        if getInfo then
+            name, title = getInfo(i)
+        else
+            name, title = GetAddOnInfo(i)
+        end
+        if name then
+            local lowerTitle = title and string.lower(title) or nil
+            if lowerUser == string.lower(name) or (lowerTitle and lowerUser == lowerTitle) then
+                return name
+            end
+        end
+    end
+    return nil
+end
+
+-- Split the parsed entries into addons and addon features. "Provider:feature" entries whose
+-- provider is a known feature provider (e.g. "ForeverQoL:viewport") become features, keyed by the
+-- provider's folder name and the lowercased feature; everything else stays an addon, so titles that
+-- contain a colon keep working.
+local function SplitFeatures(userMap)
+    if not userMap then return nil, nil end
+
+    local addons, features = {}, {}
+    for userName, enabled in pairs(userMap) do
+        local provider, feature = AutoSetup.SplitFeatureKey(userName)
+        local folder = provider and ResolveAddonName(provider:gsub("^%s*(.-)%s*$", "%1"))
+        if folder and AutoSetup.FeatureProviders[folder] then
+            features[folder .. ":" .. feature:gsub("^%s*(.-)%s*$", "%1"):lower()] = enabled
+        else
+            addons[userName] = enabled
+        end
+    end
+    return next(addons) and addons or nil, next(features) and features or nil
+end
+
 -- Resolve user-entered addon names (which may be titles) to real folder names
 local function ResolveAddonNames(userMap)
     if not userMap then return nil end
 
     local resolved = {}
-    local getCount = AutoSetup.GetAddOnCount
-    local getInfo = AutoSetup.GetAddOnNameAndTitle
-    local numAddOns = getCount and getCount() or ((GetNumAddOns and GetNumAddOns()) or 0)
-
     for userName, enabled in pairs(userMap) do
-        local lowerUser = string.lower(userName)
-        local found = false
-
-        for i = 1, numAddOns do
-            local name, title
-            if getInfo then
-                name, title = getInfo(i)
-            else
-                name, title = GetAddOnInfo(i)
-            end
-            if name then
-                local lowerName = string.lower(name)
-                local lowerTitle = title and string.lower(title) or nil
-                if lowerUser == lowerName or (lowerTitle and lowerUser == lowerTitle) then
-                    resolved[name] = enabled
-                    found = true
-                    break
-                end
-            end
-        end
-
-        -- If we didn't find a matching addon, keep the raw key as a fallback,
-        -- but let the user know so a typo isn't a silent no-op.
-        if not found then
+        local name = ResolveAddonName(userName)
+        if name then
+            resolved[name] = enabled
+        else
+            -- If we didn't find a matching addon, keep the raw key as a fallback,
+            -- but let the user know so a typo isn't a silent no-op.
             resolved[userName] = enabled
             ASP("No installed addon matches '" ..
                 userName .. "' — check the spelling; this entry will not affect any addon until corrected.")
@@ -95,6 +119,18 @@ local function ResolveAddonNames(userMap)
     end
 
     return next(resolved) and resolved or nil
+end
+
+-- Warn about features the provider (when loaded) doesn't know, so a typo isn't a silent no-op.
+local function ValidateFeatures(features)
+    if not features then return end
+    for key in pairs(features) do
+        local provider, feature = AutoSetup.SplitFeatureKey(key)
+        local api = _G[AutoSetup.FeatureProviders[provider]]
+        if api and api.IsFeatureEnabled(feature) == nil then
+            ASP("'" .. provider .. "' has no feature '" .. feature .. "' — this entry will have no effect.")
+        end
+    end
 end
 
 -- Retrieve available Edit Mode layouts (names)
@@ -257,7 +293,7 @@ local function RefreshProfileList(panel)
 
         local displayName = data.name or "Profile"
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
-        local hasAddons = data.addonSet and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
+        local hasAddons = (data.addonSet or data.featureSet) and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "default"
         local controllerText = data.nativeControllerSupport and " | |cff00ff00Controller|r" or ""
 
@@ -281,7 +317,7 @@ local function RefreshProfileList(panel)
             panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
             panel.suppressCheck:SetChecked(data.suppressChat or false)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
-            panel.addonsInput:SetText(BuildAddonsString(data.addonSet))
+            panel.addonsInput:SetText(BuildAddonsString(data.addonSet or {}, data.featureSet or {}))
         end)
 
         row:SetPoint("TOPLEFT", 0, yOffset)
@@ -433,7 +469,10 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             profile.scale = scale
             profile.suppressChat = suppress
             profile.nativeControllerSupport = controllerSupport
-            profile.addonSet = ResolveAddonNames(ParseAddonsString(addonsStr))
+            local addons, features = SplitFeatures(ParseAddonsString(addonsStr))
+            profile.addonSet = ResolveAddonNames(addons)
+            profile.featureSet = features
+            ValidateFeatures(features)
 
             ASP("Saved AutoSetup profile for " .. res .. ".")
             AutoSetup.RefreshOptionsList()
