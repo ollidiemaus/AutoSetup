@@ -260,7 +260,7 @@
                 <Layers>
                     <Layer level="ARTWORK">
                         <FontString inherits="GameFontHighlightSmall"
-                                    text="AddOns (comma-separated; prefix with ! to disable, e.g. WeakAuras, !Details). Features: ForeverQoL:viewport">
+                                    text="AddOns (comma-separated; prefix with ! to disable, e.g. WeakAuras, !Details). Features: QoL:viewport">
                             <Anchors>
                                 <!-- Label above the multi-line input -->
                                 <Anchor point="BOTTOMLEFT" relativeTo="$parentAddonsInput" relativePoint="TOPLEFT">

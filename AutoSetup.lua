@@ -344,8 +344,8 @@ end
 -------------------------------------------------------------------------------
 -- Addon feature switching
 -- Profile.featureSet format:
---   ["ForeverQoL:viewport"] = true  -- ensure the feature is on
---   ["ForeverQoL:viewport"] = false -- ensure the feature is off
+--   ["QoL:viewport"] = true  -- ensure the feature is on
+--   ["QoL:viewport"] = false -- ensure the feature is off
 -- Unlike addonSet this needs no reload: the provider addon applies the change live. Only features
 -- that appear in featureSet are touched. If the provider isn't loaded (not installed, disabled, or
 -- just enabled by this same profile and waiting for a reload) the entry is skipped.
@@ -355,10 +355,15 @@ end
 -- table. The API provides IsFeatureEnabled(feature) (nil for an unknown feature) and
 -- SetFeatureEnabled(feature, enabled).
 AutoSetup.FeatureProviders = {
-    ForeverQoL = "ForeverQoLAPI",
+    QoL = "QoLAPI",
 }
 
--- "ForeverQoL:viewport" -> "ForeverQoL", "viewport". nil when the key has no feature part.
+-- Providers that were renamed: old folder name -> new one. Saved profiles are moved over on load.
+AutoSetup.RenamedFeatureProviders = {
+    ForeverQoL = "QoL", -- Forever QoL became Quality of Life
+}
+
+-- "QoL:viewport" -> "QoL", "viewport". nil when the key has no feature part.
 function AutoSetup.SplitFeatureKey(key)
     local provider, feature = tostring(key):match("^(.-):([^:]+)$")
     if provider and provider ~= "" then
@@ -565,10 +570,23 @@ eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == addonName then
         AutoSetupDB = AutoSetupDB or defaultDB
-        -- Purge legacy auto-reload flags from saved profiles (we use the popup instead)
+        -- Purge legacy auto-reload flags from saved profiles (we use the popup instead), and move
+        -- features of renamed providers to the new name ("ForeverQoL:viewport" -> "QoL:viewport").
         for _res, profile in pairs(AutoSetupDB) do
             if type(profile) == "table" then
                 profile.autoReload = nil
+                if type(profile.featureSet) == "table" then
+                    local moved = {}
+                    for key in pairs(profile.featureSet) do
+                        local provider, feature = AutoSetup.SplitFeatureKey(key)
+                        local renamed = provider and AutoSetup.RenamedFeatureProviders[provider]
+                        if renamed then moved[key] = renamed .. ":" .. feature end
+                    end
+                    for key, newKey in pairs(moved) do
+                        profile.featureSet[newKey] = profile.featureSet[key]
+                        profile.featureSet[key] = nil
+                    end
+                end
             end
         end
         Debug("AutoSetup loaded.")
