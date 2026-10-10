@@ -81,7 +81,7 @@ local function ResolveAddonName(userName)
 end
 
 -- Split the parsed entries into addons and addon features. "Provider:feature" entries whose
--- provider is a known feature provider (e.g. "ForeverQoL:viewport") become features, keyed by the
+-- provider is a known feature provider (e.g. "QoL:viewport") become features, keyed by the
 -- provider's folder name and the lowercased feature; everything else stays an addon, so titles that
 -- contain a colon keep working.
 local function SplitFeatures(userMap)

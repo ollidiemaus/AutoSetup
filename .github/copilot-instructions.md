@@ -86,12 +86,13 @@ profile = {
 
 ## Addon features
 
-`featureSet` entries (typed into the same AddOns box as `ForeverQoL:viewport` / `!ForeverQoL:viewport`)
+`featureSet` entries (typed into the same AddOns box as `QoL:viewport` / `!QoL:viewport`)
 are applied by `ApplyFeatureSet` through a provider addon's public API. Providers are registered in
 `AutoSetup.FeatureProviders` (folder name -> global API table name); the API must offer
 `IsFeatureEnabled(feature)` (nil for unknown features) and `SetFeatureEnabled(feature, enabled)`.
 Entries whose provider isn't loaded are skipped silently. To support another addon, add it to
-`FeatureProviders` and give that addon such an API.
+`FeatureProviders` and give that addon such an API. When a provider renames its folder, add the old name to
+`RenamedFeatureProviders`; saved profiles are moved to the new name on load.
 
 ## Common tasks
 
