@@ -102,7 +102,7 @@ In the options panel:
    - `Name` = enable that addon
    - `!Name` = disable that addon
    - Names can be either **folder names** or **titles** from the AddOns list; the addon resolves them internally.
-   - **Addon features** (no reload needed): `Addon:feature` switches a single feature of a supported addon instead of the whole addon, e.g. `QoL:viewport` turns the Viewport of Quality of Life on and `!QoL:viewport` turns it off. It is applied live whenever the profile is evaluated. If the addon isn't loaded, the entry is skipped.
+   - **Addon features** (no reload needed): `Addon:feature` switches a single feature of a supported addon instead of the whole addon, e.g. `QoL:viewport` turns the Viewport of Quality of Life on and `!QoL:viewport` turns it off (`QoL=viewport` works too). It is applied live whenever the profile is evaluated. If the addon isn't loaded, the entry is skipped.
 9. Click **Save / Update** to store the profile for that resolution.
 
 Saved profiles are listed in the scrollable list at the bottom:

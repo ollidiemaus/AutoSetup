@@ -80,16 +80,16 @@ local function ResolveAddonName(userName)
     return nil
 end
 
--- Split the parsed entries into addons and addon features. "Provider:feature" entries whose
--- provider is a known feature provider (e.g. "QoL:viewport") become features, keyed by the
--- provider's folder name and the lowercased feature; everything else stays an addon, so titles that
--- contain a colon keep working.
+-- Split the parsed entries into addons and addon features. "Provider:feature" entries (or
+-- "Provider=feature") whose provider is a known feature provider (e.g. "QoL:viewport") become
+-- features, keyed by the provider's folder name and the lowercased feature; everything else stays an
+-- addon, so titles that contain a colon or "=" keep working.
 local function SplitFeatures(userMap)
     if not userMap then return nil, nil end
 
     local addons, features = {}, {}
     for userName, enabled in pairs(userMap) do
-        local provider, feature = AutoSetup.SplitFeatureKey(userName)
+        local provider, feature = AutoSetup.SplitFeatureKey((userName:gsub("=", ":")))
         local folder = provider and ResolveAddonName(provider:gsub("^%s*(.-)%s*$", "%1"))
         if folder and AutoSetup.FeatureProviders[folder] then
             features[folder .. ":" .. feature:gsub("^%s*(.-)%s*$", "%1"):lower()] = enabled
