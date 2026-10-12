@@ -306,6 +306,7 @@ local function RefreshProfileList(panel)
         row.delBtn:SetScript("OnClick", function()
             AutoSetupDB[res] = nil
             AutoSetup.RefreshOptionsList()
+            AutoSetup.ApplyCurrentProfile()
         end)
 
         row.editBtn:SetScript("OnClick", function()
@@ -476,6 +477,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
 
             ASP("Saved AutoSetup profile for " .. res .. ".")
             AutoSetup.RefreshOptionsList()
+            AutoSetup.ApplyCurrentProfile()
         end)
     end
 

@@ -114,17 +114,18 @@ Saved profiles are listed in the scrollable list at the bottom:
 
 ### Behavior overview
 
-- On login / zone load:
-  - After a short delay, AutoSetup detects the current resolution and applies:
+- On login / `/reload` (once, not again after loading screens):
+  - As soon as Edit Mode's layouts are loaded, AutoSetup detects the current resolution and applies:
     - Scale (if set)
     - Base or target layout (depending on combat/target state)
-    - Addon set (enabling/disabling only the configured addons)
+    - Addon set (enabling/disabling only the configured addons) and addon features
 
-- When resolution changes (e.g. window resize, different screen):
-  - A periodic check notices the new resolution string and reapplies the matching profile (if any).
+- When resolution changes (e.g. window resize, different screen), or you save or delete a profile:
+  - AutoSetup reapplies the matching profile (if any).
 
 - When combat/target state changes:
-  - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed.
+  - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed. Scale, addons and features are left alone.
+  - While Edit Mode is open it doesn't switch layouts; it catches up when you close Edit Mode.
 
 If AutoSetup detects that addons or native controller support need to change for a profile, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
 
