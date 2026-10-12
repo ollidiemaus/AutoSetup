@@ -25,8 +25,8 @@ AutoSetup.isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and not AutoSetup.
 local defaultDB = {}
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
-local initDone = false             -- guards one‑time initialization on login
-local lastAppliedLayoutClean = nil -- last layout name we actually selected (CleanString)
+local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
+local applyAfterCombat = false     -- the last full evaluation ran in combat; run it again once combat ends
 local currentSuppressChat = false  -- cached from the last-applied profile; read by the AddMessage hook
 local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
 local controllerSupportChangedThisSession = false -- true once we've SetCVar'd this session; Edit Mode won't offer the new mode's layouts until the next reload
@@ -55,20 +55,6 @@ end
 -- expose for other files (e.g. options panel)
 AutoSetup.Debug = Debug
 AutoSetup.Print = Print
-
--- Strip color codes, links, textures and braces and lowercase the result.
--- Used for both input strings and system messages.
-local function StripEscapes(str)
-    if not str or type(str) ~= "string" then return "" end
-    local s = str
-    s = string.gsub(s, "|c%x%x%x%x%x%x%x%x", "")
-    s = string.gsub(s, "|r", "")
-    s = string.gsub(s, "|H.-|h(.-)|h", "%1")
-    s = string.gsub(s, "|T.-|t", "")
-    s = string.gsub(s, "{.-}", "")
-    s = string.lower(s)
-    return s
-end
 
 -- Strip WoW color codes, trim whitespace and lowercase.
 -- This is the canonical way we compare layout names.
@@ -174,7 +160,13 @@ AutoSetup.GetAddOnNameAndTitle = GetAddOnNameAndTitle
 -- Edit Mode layout switching
 -------------------------------------------------------------------------------
 
-local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
+-- Bumped by every ApplyEditLayout call, so a pending retry gives way to a newer request instead of
+-- switching to a layout that's no longer wanted.
+local layoutRequest = 0
+
+local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, request)
+    if request ~= layoutRequest then return end
+
     if InCombatLockdown() then
         -- Never touch layouts in combat; just bail quietly.
         if verbose then Print("Cannot change Edit Mode layout in combat.") end
@@ -184,23 +176,20 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
     if not EditModeManagerFrame then
         C_AddOns.LoadAddOn("Blizzard_EditMode")
     end
+    local manager = EditModeManagerFrame
 
-    -- If Edit Mode reports that we're already on the requested layout, do nothing.
-    if C_EditMode and C_EditMode.GetActiveLayoutInfo then
-        local activeInfo = C_EditMode.GetActiveLayoutInfo()
-        if activeInfo then
-            local activeNameClean = CleanString(activeInfo.layoutName)
-            if activeNameClean == targetNameClean then
-                return
-            end
-        end
-    end
+    -- Don't switch layouts under the player while Edit Mode is open, it would throw away their
+    -- unsaved changes. The EditMode.Exit callback applies the profile's layout afterwards.
+    if manager and manager:IsEditModeActive() then return end
 
-    local internalLayouts = EditModeManagerFrame and EditModeManagerFrame:GetLayouts()
     local foundIndex, foundName
+    if manager and manager:IsInitialized() then
+        local activeInfo = manager:GetActiveLayoutInfo()
+        if activeInfo and CleanString(activeInfo.layoutName) == targetNameClean then
+            return
+        end
 
-    if internalLayouts then
-        for i, layoutInfo in ipairs(internalLayouts) do
+        for i, layoutInfo in ipairs(manager:GetLayouts()) do
             if CleanString(layoutInfo.layoutName) == targetNameClean then
                 foundIndex = i
                 foundName = layoutInfo.layoutName
@@ -210,27 +199,24 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose)
     end
 
     if foundIndex then
+        manager:SelectLayout(foundIndex)
         if verbose then
-            Debug("Switching to Edit Mode layout '" .. foundName .. "' (index " .. foundIndex .. ")")
+            Debug("Switched to Edit Mode layout '" .. foundName .. "' (index " .. foundIndex .. ")")
             Print("Switched to layout '" .. foundName .. "'.")
         end
-        EditModeManagerFrame:SelectLayout(foundIndex)
-        lastAppliedLayoutClean = targetNameClean
-    else
-        if attemptsLeft and attemptsLeft > 0 then
-            C_Timer.After(1.0, function()
-                ApplyEditLayoutInternal(targetNameClean, attemptsLeft - 1, verbose)
-            end)
-        elseif verbose then
-            Print("Could not find Edit Mode layout for '" .. targetNameClean .. "'.")
-        end
+    elseif attemptsLeft > 0 then
+        C_Timer.After(1.0, function()
+            ApplyEditLayoutInternal(targetNameClean, attemptsLeft - 1, verbose, request)
+        end)
+    elseif verbose then
+        Print("Could not find Edit Mode layout for '" .. targetNameClean .. "'.")
     end
 end
 
 local function ApplyEditLayout(layoutName, verbose)
     if not layoutName or layoutName == "" then return end
-    local targetNameClean = CleanString(layoutName)
-    ApplyEditLayoutInternal(targetNameClean, 3, verbose)
+    layoutRequest = layoutRequest + 1
+    ApplyEditLayoutInternal(CleanString(layoutName), 3, verbose, layoutRequest)
 end
 
 -------------------------------------------------------------------------------
@@ -337,7 +323,6 @@ local function ApplyAddonSet(profile, verbose)
         end
     elseif verbose then
         Debug("No AddOn changes detected - configuration already matches profile")
-        Print("AddOn configuration already matches profile.")
     end
 end
 
@@ -414,19 +399,25 @@ local function ApplyScale(profile, verbose)
     end
 end
 
--- Returns true when Edit Mode should be left alone this cycle because the input mode
--- (keyboard/mouse vs. controller) isn't confirmed settled yet -- either we just changed it
--- ourselves this session (Edit Mode won't offer the new mode's layouts until the next reload),
--- or we're blocked from changing it live and it still doesn't match the profile.
+-- True when Edit Mode should be left alone because the input mode (keyboard/mouse vs. controller)
+-- isn't confirmed settled yet -- either we changed it ourselves this session (Edit Mode won't offer
+-- the new mode's layouts until the next reload), or we're blocked from changing it live and it
+-- still doesn't match the profile.
+local function IsInputModeUnsettled(profile)
+    if not AutoSetup.isForever then return false end
+    local desired = profile.nativeControllerSupport or false
+    return controllerSupportChangedThisSession or desired ~= (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
+end
+
 local function ApplyControllerSupport(profile, verbose)
-    if not profile or not AutoSetup.isForever then return false end
+    if not profile or not AutoSetup.isForever then return end
 
     local desired = profile.nativeControllerSupport or false
     local current = (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
 
     if desired == current then
         lastAppliedControllerSupport = desired
-        return controllerSupportChangedThisSession
+        return
     end
 
     -- InputDeviceInterfaceStyle is a protected CVar. Confirmed in-game: WoW allows an addon to
@@ -457,13 +448,39 @@ local function ApplyControllerSupport(profile, verbose)
                 " for '" .. (profile.name or "this profile") .. "'.")
         end
     end
-
-    return true
 end
 
+-- The layout the profile wants right now: the target layout in combat or with a (soft) target,
+-- the base layout otherwise. nil leaves Edit Mode alone: native controller support uses its own
+-- hidden default layout that isn't selectable from GetLayouts() and can't coexist with a
+-- keyboard/mouse layout, so the client manages it. Only relevant on WoW Forever, the only flavor
+-- with this setting -- elsewhere a stale nativeControllerSupport value is ignored.
+local function GetDesiredLayout(profile)
+    if AutoSetup.isForever and profile.nativeControllerSupport then return nil end
+
+    local target = profile.editLayoutTarget
+    if target and target ~= "" and (UnitAffectingCombat("player") or UnitExists("target") or UnitExists("softenemy")) then
+        return target
+    end
+    return profile.editLayoutBase
+end
+
+-- Switch to the layout the profile wants right now. This is all that target and combat changes do,
+-- so it stays cheap and leaves scale, addons and features alone.
+local function UpdateLayout(profile, verbose)
+    -- Edit Mode won't offer the right layouts until the input mode is settled.
+    if IsInputModeUnsettled(profile) then return end
+    ApplyEditLayout(GetDesiredLayout(profile), verbose)
+end
+
+-- Apply the whole profile for the current resolution: once per login/reload (verbose, see
+-- RunInitialEvaluation), on a resolution change, after a profile is saved or deleted, and after
+-- combat when it last ran in combat.
 local function EvaluateProfileState(verbose)
     local res = GetCurrentResolution()
     lastResolution = res
+    -- The Apply* functions skip what can't change in combat; catch up when it ends.
+    applyAfterCombat = InCombatLockdown()
 
     local profile = GetProfileForResolution(res)
     currentSuppressChat = profile and profile.suppressChat or false
@@ -476,38 +493,34 @@ local function EvaluateProfileState(verbose)
         Print("Applying AutoSetup profile '" .. (profile.name or res) .. "' (" .. res .. ").")
     end
 
-    local inCombat = UnitAffectingCombat("player")
-    local hasTarget = UnitExists("target")
-    local hasSoftTarget = UnitExists("softenemy")
-
-    -- Native controller support uses its own hidden default Edit Mode layout that isn't
-    -- selectable from GetLayouts() and can't coexist with a keyboard/mouse layout, so leave
-    -- Edit Mode alone entirely for these profiles and let the client manage it. Only relevant
-    -- on WoW Forever, which is the only flavor with this setting -- on any other flavor,
-    -- ignore a stale/irrelevant nativeControllerSupport value and apply layout normally.
-    local layoutToUse = nil
-    if not (AutoSetup.isForever and profile.nativeControllerSupport) then
-        layoutToUse = profile.editLayoutBase
-        if (inCombat or hasTarget or hasSoftTarget) and profile.editLayoutTarget and profile.editLayoutTarget ~= "" then
-            layoutToUse = profile.editLayoutTarget
-        end
-    end
-
     ApplyScale(profile, verbose)
-    local inputModeUnsettled = ApplyControllerSupport(profile, verbose)
-
-    -- Avoid redundant layout switches and chat spam if we already applied this layout.
-    -- Also skip while the keyboard/mouse vs. controller mode isn't confirmed settled yet
-    -- (see ApplyControllerSupport) -- Edit Mode won't offer the right layouts until then.
-    if not inputModeUnsettled and layoutToUse and layoutToUse ~= "" then
-        local layoutClean = CleanString(layoutToUse)
-        if layoutClean ~= "" and layoutClean ~= lastAppliedLayoutClean then
-            ApplyEditLayout(layoutToUse, verbose)
-        end
-    end
-
+    ApplyControllerSupport(profile, verbose)
+    UpdateLayout(profile, verbose)
     ApplyAddonSet(profile, verbose)
     ApplyFeatureSet(profile, verbose)
+end
+
+-- The one verbose evaluation per login/reload, on whichever comes first: Edit Mode's layouts
+-- arriving or the fallback timer after PLAYER_ENTERING_WORLD. Login and reload start a fresh Lua
+-- state, so the flag is never reset; loading screens (which fire PLAYER_ENTERING_WORLD too) don't
+-- run it again. It is set before evaluating because switching layouts fires
+-- EDIT_MODE_LAYOUTS_UPDATED synchronously, which would otherwise run the evaluation a second time.
+local function RunInitialEvaluation()
+    if initDone then return end
+    initDone = true
+    EvaluateProfileState(true)
+end
+
+-- Used by the options panel after saving or deleting a profile. Before the initial evaluation there
+-- is nothing to do, it picks the change up itself.
+function AutoSetup.ApplyCurrentProfile()
+    if initDone then EvaluateProfileState(false) end
+end
+
+-- Target/combat changes and leaving Edit Mode only need the layout of the current profile.
+local function UpdateCurrentLayout()
+    local profile = initDone and GetProfileForResolution(lastResolution)
+    if profile then UpdateLayout(profile, false) end
 end
 
 -------------------------------------------------------------------------------
@@ -516,6 +529,8 @@ end
 -------------------------------------------------------------------------------
 
 local function CheckResolutionChange()
+    -- Size and scale events fire during login too; the initial evaluation covers those.
+    if not initDone then return end
     local res = GetCurrentResolution()
     if res ~= lastResolution then
         Debug("Resolution changed from " .. tostring(lastResolution) .. " to " .. tostring(res))
@@ -527,25 +542,21 @@ end
 -- Chat suppression for Edit Mode messages
 -------------------------------------------------------------------------------
 
+-- EditModeManagerFrameMixin:NotifyChatOfLayoutChange prints HUD_EDIT_MODE_LAYOUT_APPLIED to
+-- DEFAULT_CHAT_FRAME (ChatFrame1). As a pattern for the whole line it matches in every client
+-- language, and never a player's chat line, which starts with the channel and name.
+local layoutAppliedPattern
+if HUD_EDIT_MODE_LAYOUT_APPLIED then
+    local escaped = HUD_EDIT_MODE_LAYOUT_APPLIED:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
+    layoutAppliedPattern = "^" .. escaped:gsub("%%%%%d*%%?%$?s", ".+") .. "$" -- "%s" or "%1$s"
+end
+
 local originalAddMessage = ChatFrame1 and ChatFrame1.AddMessage
 
-if originalAddMessage then
+if originalAddMessage and layoutAppliedPattern then
     ChatFrame1.AddMessage = function(self, text, ...)
-        if currentSuppressChat and text then
-            local cleanText = StripEscapes(text)
-            local formatStr = ERR_EDIT_MODE_LAYOUT_APPLIED
-
-            if formatStr then
-                local cleanFormat = StripEscapes(formatStr)
-                local prefix = strsplit("%", cleanFormat)
-                if prefix and prefix ~= "" and string.find(cleanText, prefix, 1, true) then
-                    return
-                end
-            end
-
-            if string.find(cleanText, "edit mode layout", 1, true) then
-                return
-            end
+        if currentSuppressChat and type(text) == "string" and text:find(layoutAppliedPattern) then
+            return
         end
         return originalAddMessage(self, text, ...)
     end
@@ -568,7 +579,9 @@ eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 eventFrame:RegisterEvent("UI_SCALE_CHANGED")
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == addonName then
+    if event == "ADDON_LOADED" then
+        if arg1 ~= addonName then return end
+        self:UnregisterEvent("ADDON_LOADED")
         AutoSetupDB = AutoSetupDB or defaultDB
         -- Purge legacy auto-reload flags from saved profiles (we use the popup instead), and move
         -- features of renamed providers to the new name ("ForeverQoL:viewport" -> "QoL:viewport").
@@ -604,29 +617,27 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         -- Small defer: the new size/scale may lag the event by a frame.
         C_Timer.After(0.1, CheckResolutionChange)
     elseif event == "PLAYER_ENTERING_WORLD" then
-        initDone = false
-        local res = GetCurrentResolution()
-        Debug("PLAYER_ENTERING_WORLD. Current resolution: " .. res)
-
-        C_Timer.After(4.0, function()
-            if not initDone then
-                EvaluateProfileState(true)
-                initDone = true
-            end
-        end)
-    elseif event == "EDIT_MODE_LAYOUTS_UPDATED" then
+        Debug("PLAYER_ENTERING_WORLD. Current resolution: " .. GetCurrentResolution())
+        -- Fallback in case EDIT_MODE_LAYOUTS_UPDATED doesn't come.
         if not initDone then
-            initDone = true
-            EvaluateProfileState(true)
+            C_Timer.After(4.0, RunInitialEvaluation)
         end
+    elseif event == "EDIT_MODE_LAYOUTS_UPDATED" then
+        RunInitialEvaluation()
+    elseif event == "PLAYER_REGEN_ENABLED" and applyAfterCombat then
+        EvaluateProfileState(false)
     elseif event == "PLAYER_TARGET_CHANGED"
         or event == "PLAYER_SOFT_ENEMY_CHANGED"
         or event == "PLAYER_REGEN_DISABLED"
         or event == "PLAYER_REGEN_ENABLED" then
-        if initDone then
-            EvaluateProfileState(false)
-        end
+        UpdateCurrentLayout()
     end
+end)
+
+-- Layout switches wait while Edit Mode is open (see ApplyEditLayoutInternal); catch up once it has
+-- closed, outside Blizzard's exit code.
+EventRegistry:RegisterCallback("EditMode.Exit", function()
+    C_Timer.After(0, UpdateCurrentLayout)
 end)
 
 -------------------------------------------------------------------------------
