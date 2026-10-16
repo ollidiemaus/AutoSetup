@@ -126,9 +126,13 @@ local function ValidateFeatures(features)
     if not features then return end
     for key in pairs(features) do
         local provider, feature = AutoSetup.SplitFeatureKey(key)
-        local api = _G[AutoSetup.FeatureProviders[provider]]
-        if api and api.IsFeatureEnabled(feature) == nil then
-            ASP("'" .. provider .. "' has no feature '" .. feature .. "' — this entry will have no effect.")
+        local api = AutoSetup.GetFeatureProvider(provider)
+        if api then
+            -- A failed call was reported by CallFeatureProvider; the save goes on.
+            local ok, enabled = AutoSetup.CallFeatureProvider(api.IsFeatureEnabled, feature)
+            if ok and enabled == nil then
+                ASP("'" .. provider .. "' has no feature '" .. feature .. "' — this entry will have no effect.")
+            end
         end
     end
 end

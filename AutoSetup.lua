@@ -348,6 +348,26 @@ AutoSetup.RenamedFeatureProviders = {
     ForeverQoL = "QoL", -- Forever QoL became Quality of Life
 }
 
+-- The API table of a provider (folder name), or nil when it isn't loaded. A global that isn't a
+-- table offering both functions (an outdated addon, another addon using the same name) counts as
+-- not loaded.
+function AutoSetup.GetFeatureProvider(provider)
+    local globalName = provider and AutoSetup.FeatureProviders[provider]
+    local api = globalName and _G[globalName]
+    if type(api) == "table" and type(api.IsFeatureEnabled) == "function"
+        and type(api.SetFeatureEnabled) == "function" then
+        return api
+    end
+    return nil
+end
+
+-- Every call into a provider goes through here, so a broken provider only costs its own entries.
+-- A failure goes to the error handler (BugSack, script errors) with the provider's own stack and
+-- returns false; success returns true and the function's result.
+function AutoSetup.CallFeatureProvider(func, ...)
+    return xpcall(func, CallErrorHandler, ...)
+end
+
 -- "QoL:viewport" -> "QoL", "viewport". nil when the key has no feature part.
 function AutoSetup.SplitFeatureKey(key)
     local provider, feature = tostring(key):match("^(.-):([^:]+)$")
@@ -362,14 +382,19 @@ local function ApplyFeatureSet(profile, verbose)
 
     for key, desired in pairs(profile.featureSet) do
         local provider, feature = AutoSetup.SplitFeatureKey(key)
-        local api = provider and AutoSetup.FeatureProviders[provider] and _G[AutoSetup.FeatureProviders[provider]]
+        local api = AutoSetup.GetFeatureProvider(provider)
         if not api then
             if verbose then Debug("Feature provider not loaded, skipping: " .. tostring(key)) end
-        elseif api.IsFeatureEnabled(feature) == nil then
-            if verbose then Print("Unknown feature '" .. feature .. "' for " .. provider .. " in this profile.") end
-        elseif api.IsFeatureEnabled(feature) ~= desired then
-            api.SetFeatureEnabled(feature, desired)
-            Debug("Feature " .. key .. " set to " .. tostring(desired))
+        else
+            -- A failed call was reported by CallFeatureProvider; the entry is skipped.
+            local ok, enabled = AutoSetup.CallFeatureProvider(api.IsFeatureEnabled, feature)
+            if ok and enabled == nil then
+                if verbose then Print("Unknown feature '" .. feature .. "' for " .. provider .. " in this profile.") end
+            elseif ok and enabled ~= desired then
+                if AutoSetup.CallFeatureProvider(api.SetFeatureEnabled, feature, desired) then
+                    Debug("Feature " .. key .. " set to " .. tostring(desired))
+                end
+            end
         end
     end
 end
