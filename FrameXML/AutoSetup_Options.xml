@@ -220,23 +220,12 @@
                 </Layers>
             </Slider>
 
-            <!-- Suppress chat -->
-            <CheckButton name="$parentSuppressCheck" inherits="ChatConfigCheckButtonTemplate">
+            <!-- Native controller support (WoW Forever) -->
+            <CheckButton name="$parentControllerCheck" inherits="ChatConfigCheckButtonTemplate">
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
                             <AbsDimension x="20" y="-240"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </CheckButton>
-
-            <!-- Native controller support (WoW Forever) -->
-            <CheckButton name="$parentControllerCheck" inherits="ChatConfigCheckButtonTemplate">
-                <Anchors>
-                    <Anchor point="TOPLEFT" relativeTo="$parentSuppressCheck" relativePoint="BOTTOMLEFT">
-                        <Offset>
-                            <AbsDimension x="0" y="-5"/>
                         </Offset>
                     </Anchor>
                 </Anchors>

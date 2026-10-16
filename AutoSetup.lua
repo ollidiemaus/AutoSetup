@@ -27,7 +27,6 @@ local debugLog = {}                -- rolling in‑memory log for /autosetup deb
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
 local applyAfterCombat = false     -- the last full evaluation ran in combat; run it again once combat ends
-local currentSuppressChat = false  -- cached from the last-applied profile; read by the AddMessage hook
 local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
 local controllerSupportChangedThisSession = false -- true once we've SetCVar'd this session; Edit Mode won't offer the new mode's layouts until the next reload
 
@@ -100,7 +99,6 @@ local function EnsureProfile(resolution)
         editLayoutBase = nil,
         editLayoutTarget = nil,
         scale = nil,
-        suppressChat = false,
         nativeControllerSupport = false,
         addonSet = nil, -- [addonName] = true/false
         featureSet = nil, -- ["Addon:feature"] = true/false
@@ -199,7 +197,9 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
     end
 
     if foundIndex then
-        manager:SelectLayout(foundIndex)
+        -- The manager's list (presets, then saved layouts) uses the API's layout index. Not
+        -- manager:SelectLayout, which calls the same API but also prints "layout applied" in chat.
+        C_EditMode.SetActiveLayout(foundIndex)
         if verbose then
             Debug("Switched to Edit Mode layout '" .. foundName .. "' (index " .. foundIndex .. ")")
             Print("Switched to layout '" .. foundName .. "'.")
@@ -483,7 +483,6 @@ local function EvaluateProfileState(verbose)
     applyAfterCombat = InCombatLockdown()
 
     local profile = GetProfileForResolution(res)
-    currentSuppressChat = profile and profile.suppressChat or false
     if not profile then
         if verbose then Print("No AutoSetup profile for resolution " .. res .. ".") end
         return
@@ -539,30 +538,6 @@ local function CheckResolutionChange()
 end
 
 -------------------------------------------------------------------------------
--- Chat suppression for Edit Mode messages
--------------------------------------------------------------------------------
-
--- EditModeManagerFrameMixin:NotifyChatOfLayoutChange prints HUD_EDIT_MODE_LAYOUT_APPLIED to
--- DEFAULT_CHAT_FRAME (ChatFrame1). As a pattern for the whole line it matches in every client
--- language, and never a player's chat line, which starts with the channel and name.
-local layoutAppliedPattern
-if HUD_EDIT_MODE_LAYOUT_APPLIED then
-    local escaped = HUD_EDIT_MODE_LAYOUT_APPLIED:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0")
-    layoutAppliedPattern = "^" .. escaped:gsub("%%%%%d*%%?%$?s", ".+") .. "$" -- "%s" or "%1$s"
-end
-
-local originalAddMessage = ChatFrame1 and ChatFrame1.AddMessage
-
-if originalAddMessage and layoutAppliedPattern then
-    ChatFrame1.AddMessage = function(self, text, ...)
-        if currentSuppressChat and type(text) == "string" and text:find(layoutAppliedPattern) then
-            return
-        end
-        return originalAddMessage(self, text, ...)
-    end
-end
-
--------------------------------------------------------------------------------
 -- Events
 -------------------------------------------------------------------------------
 
@@ -603,11 +578,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             end
         end
         Debug("AutoSetup loaded.")
-
-        -- Prime the chat-suppression cache immediately so it's correct before
-        -- the first real EvaluateProfileState runs a few seconds from now.
-        local primingProfile = GetProfileForResolution(GetCurrentResolution())
-        currentSuppressChat = primingProfile and primingProfile.suppressChat or false
 
         -- Safety-net fallback: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED should catch most
         -- resolution/scale changes immediately; this ticker exists for cases those

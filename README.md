@@ -29,7 +29,7 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 
 - **Per‑resolution profiles**
   - Each profile is keyed by resolution (e.g. `1920x1080`, `1280x800`).
-  - Store a friendly name, base layout, optional target/combat layout, scale, chat suppression, and addon set.
+  - Store a friendly name, base layout, optional target/combat layout, scale, and addon set.
 
 - **Base + target layout support**
   - `Base` layout is used out of combat / no target.
@@ -45,9 +45,6 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 - **UI scale per profile**
   - Optional override for `uiScale` per resolution.
 
-- **Chat noise control**
-  - Optional flag to suppress “Edit Mode layout applied” messages in chat.
-
 - **Native controller support per profile (WoW Forever only)**
   - Optional flag marking whether a profile expects WoW Forever's built-in native controller support to be on or off (e.g. on for a Steam Deck/couch profile, off for a mouse-and-keyboard profile).
   - This setting doesn't exist on any other flavor, so the checkbox is hidden entirely unless AutoSetup detects it's running on Forever.
@@ -57,6 +54,7 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
   - Never changes your actual resolution; it only **observes** it.
   - Skips layout and addon changes in combat to avoid taint.
   - Avoids redundant layout switches and stutter when you're already on the right layout.
+  - Switches layouts quietly: AutoSetup's own switches print no "layout applied" line in chat. A layout you pick in Edit Mode yourself, or the one a specialization change brings, still shows Blizzard's message.
 
 ---
 
@@ -90,12 +88,10 @@ In the options panel:
    - Leave blank if you only want one layout for this resolution, or if this profile has native controller support enabled (same reason as above).
 5. **UI Scale**
    - Adjust the slider if you want a per‑profile UI scale override.
-6. **Suppress chat**
-   - Check to hide Edit Mode "layout applied" spam in chat when this profile is active.
-7. **Enable native controller support** (only shown on WoW Forever)
+6. **Enable native controller support** (only shown on WoW Forever)
    - Check this if the profile expects WoW Forever's native controller support to be on (leave unchecked for keyboard/mouse profiles).
    - Takes two reloads to fully apply: AutoSetup sets the CVar as soon as it can (on the next login/reload after a mismatch is detected) and asks you to reload once more for it to actually take effect. Blizzard also blocks addons from changing this setting live mid-session (e.g. right when you switch resolutions), so in that case AutoSetup shows the reload popup first to get that initial reload going. Edit Mode is left alone the whole time until the mode switch is fully confirmed.
-8. **AddOns**
+7. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
      - `WeakAuras, !Details, !Midnight Viewport`
@@ -103,7 +99,7 @@ In the options panel:
    - `!Name` = disable that addon
    - Names can be either **folder names** or **titles** from the AddOns list; the addon resolves them internally.
    - **Addon features** (no reload needed): `Addon:feature` switches a single feature of a supported addon instead of the whole addon, e.g. `QoL:viewport` turns the Viewport of Quality of Life on and `!QoL:viewport` turns it off (`QoL=viewport` works too). It is applied live whenever the profile is evaluated. If the addon isn't loaded, the entry is skipped.
-9. Click **Save / Update** to store the profile for that resolution.
+8. Click **Save / Update** to store the profile for that resolution.
 
 Saved profiles are listed in the scrollable list at the bottom:
 

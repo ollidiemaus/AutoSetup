@@ -316,7 +316,6 @@ local function RefreshProfileList(panel)
             panel.baseLayoutInput:SetText(data.editLayoutBase or "")
             panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
             panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
-            panel.suppressCheck:SetChecked(data.suppressChat or false)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet or {}, data.featureSet or {}))
         end)
@@ -380,7 +379,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.targetLayoutInput   = _G[baseName .. "TargetLayoutInput"]
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
     panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"]
-    panel.suppressCheck       = _G[baseName .. "SuppressCheck"]
     panel.controllerCheck     = _G[baseName .. "ControllerCheck"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
     panel.saveButton          = _G[baseName .. "SaveButton"]
@@ -400,10 +398,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     if panel.baseLayoutInput then panel.baseLayoutInput:SetAutoFocus(false) end
     if panel.targetLayoutInput then panel.targetLayoutInput:SetAutoFocus(false) end
     if panel.addonsInput then panel.addonsInput:SetAutoFocus(false) end
-
-    if panel.suppressCheck and panel.suppressCheck.Text then
-        panel.suppressCheck.Text:SetText("Suppress 'layout applied' chat messages")
-    end
 
     -- Native controller support only exists on WoW Forever; hide the option entirely elsewhere
     -- rather than showing a checkbox for a setting the current flavor doesn't have.
@@ -450,7 +444,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             local baseLayout = panel.baseLayoutInput:GetText() or ""
             local targetLayout = panel.targetLayoutInput:GetText() or ""
             local scale = tonumber(string.format("%.2f", panel.scaleSlider:GetValue()))
-            local suppress = panel.suppressCheck:GetChecked() and true or false
             local controllerSupport = panel.controllerCheck and panel.controllerCheck:GetChecked() and true or false
             local addonsStr = panel.addonsInput:GetText() or ""
 
@@ -468,7 +461,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             profile.editLayoutBase = (baseLayout ~= "" and baseLayout) or nil
             profile.editLayoutTarget = (targetLayout ~= "" and targetLayout) or nil
             profile.scale = scale
-            profile.suppressChat = suppress
             profile.nativeControllerSupport = controllerSupport
             local addons, features = SplitFeatures(ParseAddonsString(addonsStr))
             profile.addonSet = ResolveAddonNames(addons)
@@ -488,7 +480,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             panel.baseLayoutInput:SetText("")
             panel.targetLayoutInput:SetText("")
             panel.scaleSlider:SetValue(tonumber(GetCVar("uiScale")) or 1.0)
-            panel.suppressCheck:SetChecked(false)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(false) end
             panel.addonsInput:SetText("")
         end)
