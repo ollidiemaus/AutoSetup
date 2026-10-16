@@ -246,7 +246,6 @@ end
 local function RefreshProfileList(panel)
     if not panel or not panel.listContent then return end
 
-    local db = AutoSetup.GetDB and AutoSetup.GetDB() or _G.AutoSetupDB or {}
     panel.rows = panel.rows or {}
 
     for _, row in ipairs(panel.rows) do
@@ -261,7 +260,7 @@ local function RefreshProfileList(panel)
     local yOffset = 0
     local hasAny = false
 
-    for res, data in pairs(db) do
+    for res, data in AutoSetup.IterateProfiles() do
         hasAny = true
         local row = panel.rows[index]
         if not row or not row.subtext then
@@ -308,7 +307,7 @@ local function RefreshProfileList(panel)
             targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText)
 
         row.delBtn:SetScript("OnClick", function()
-            AutoSetupDB[res] = nil
+            AutoSetup.DeleteProfile(res)
             AutoSetup.RefreshOptionsList()
             AutoSetup.ApplyCurrentProfile()
         end)

@@ -106,9 +106,20 @@ local function EnsureProfile(resolution)
     return db[resolution]
 end
 
-AutoSetup.GetDB = GetDB
+local function DeleteProfile(resolution)
+    local db = GetDB()
+    db[resolution] = nil
+end
+
+-- Iterate all profiles: for resolution, profile in IterateProfiles() do ... end
+local function IterateProfiles()
+    return next, GetDB(), nil
+end
+
 AutoSetup.GetProfileForResolution = GetProfileForResolution
 AutoSetup.EnsureProfile = EnsureProfile
+AutoSetup.DeleteProfile = DeleteProfile
+AutoSetup.IterateProfiles = IterateProfiles
 
 -------------------------------------------------------------------------------
 -- AddOn iteration helpers (shared with the options panel)
@@ -582,10 +593,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= addonName then return end
         self:UnregisterEvent("ADDON_LOADED")
-        AutoSetupDB = AutoSetupDB or defaultDB
+        local db = GetDB()
         -- Purge legacy auto-reload flags from saved profiles (we use the popup instead), and move
         -- features of renamed providers to the new name ("ForeverQoL:viewport" -> "QoL:viewport").
-        for _res, profile in pairs(AutoSetupDB) do
+        for _res, profile in pairs(db) do
             if type(profile) == "table" then
                 profile.autoReload = nil
                 if type(profile.featureSet) == "table" then
