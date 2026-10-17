@@ -296,10 +296,11 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
     end
 end
 
-local function ApplyEditLayout(layoutName, verbose)
-    if not layoutName or layoutName == "" then return end
+-- Takes a name already cleaned with CleanString; nil leaves Edit Mode alone.
+local function ApplyEditLayout(layoutNameClean, verbose)
+    if not layoutNameClean then return end
     layoutRequest = layoutRequest + 1
-    ApplyEditLayoutInternal(CleanString(layoutName), 3, verbose, layoutRequest)
+    ApplyEditLayoutInternal(layoutNameClean, 3, verbose, layoutRequest)
 end
 
 -------------------------------------------------------------------------------
@@ -553,27 +554,69 @@ local function ApplyControllerSupport(profile, verbose)
     end
 end
 
--- The layout the profile wants right now: the target layout in combat or with a (soft) target,
--- the base layout otherwise. nil leaves Edit Mode alone: native controller support uses its own
--- hidden default layout that isn't selectable from GetLayouts() and can't coexist with a
--- keyboard/mouse layout, so the client manages it. Only relevant on WoW Forever, the only flavor
--- with this setting -- elsewhere a stale nativeControllerSupport value is ignored.
-local function GetDesiredLayout(profile)
-    if AutoSetup.isForever and profile.nativeControllerSupport then return nil end
+-- The current profile and its layout names, cleaned, as of the last full evaluation
+-- (CacheProfileLayouts), so target and combat events neither look up the profile nor clean names.
+local layoutProfile = nil          -- profile for the current resolution, nil without one
+local baseLayoutClean = nil        -- its base layout; nil when Edit Mode is left alone
+local targetLayoutClean = nil      -- its target layout; nil without one or when Edit Mode is left alone
 
-    local target = profile.editLayoutTarget
-    if target and target ~= "" and (UnitAffectingCombat("player") or UnitExists("target") or UnitExists("softenemy")) then
-        return target
-    end
-    return profile.editLayoutBase
+-- Cleaned name, or nil for no layout (empty or blank).
+local function CleanLayoutName(name)
+    local clean = CleanString(name)
+    if clean ~= "" then return clean end
 end
 
--- Switch to the layout the profile wants right now. This is all that target and combat changes do,
--- so it stays cheap and leaves scale, addons and features alone.
-local function UpdateLayout(profile, verbose)
+-- nil layouts leave Edit Mode alone: native controller support uses its own hidden default layout
+-- that isn't selectable from GetLayouts() and can't coexist with a keyboard/mouse layout, so the
+-- client manages it. Only relevant on WoW Forever, the only flavor with this setting -- elsewhere a
+-- stale nativeControllerSupport value is ignored.
+local function CacheProfileLayouts(profile)
+    layoutProfile = profile
+    if not profile or (AutoSetup.isForever and profile.nativeControllerSupport) then
+        baseLayoutClean, targetLayoutClean = nil, nil
+    else
+        baseLayoutClean = CleanLayoutName(profile.editLayoutBase)
+        targetLayoutClean = CleanLayoutName(profile.editLayoutTarget)
+    end
+end
+
+-- The layout the profile wants right now: the target layout in combat or with a (soft) target,
+-- the base layout otherwise.
+local function GetDesiredLayout()
+    if targetLayoutClean and (UnitAffectingCombat("player") or UnitExists("target") or UnitExists("softenemy")) then
+        return targetLayoutClean
+    end
+    return baseLayoutClean
+end
+
+-- Switch to the layout the current profile wants right now. This is all that target and combat
+-- changes do, so it stays cheap and leaves scale, addons and features alone.
+local function UpdateLayout(verbose)
     -- Edit Mode won't offer the right layouts until the input mode is settled.
-    if IsInputModeUnsettled(profile) then return end
-    ApplyEditLayout(GetDesiredLayout(profile), verbose)
+    if not layoutProfile or IsInputModeUnsettled(layoutProfile) then return end
+    ApplyEditLayout(GetDesiredLayout(), verbose)
+end
+
+local eventFrame = CreateFrame("Frame")
+
+-- Only needed to switch to the target layout. Combat end (PLAYER_REGEN_ENABLED) isn't among them:
+-- it stays registered for the catch-up after an evaluation that ran in combat, and to leave the
+-- target layout (or switch to it, if combat start couldn't) once combat ends. It fires once per combat.
+local TARGET_EVENTS = { "PLAYER_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED", "PLAYER_REGEN_DISABLED" }
+local targetEventsRegistered = nil -- nil until the first evaluation, so that one always logs the state
+
+-- Listen to the target events only while a target layout applies, so without one AutoSetup does
+-- next to nothing during play. Recomputed on every full evaluation, after CacheProfileLayouts and
+-- ApplyControllerSupport (an unsettled input mode leaves Edit Mode alone until the next reload).
+local function UpdateTargetEventRegistration()
+    local wanted = targetLayoutClean ~= nil and not IsInputModeUnsettled(layoutProfile)
+    if wanted == targetEventsRegistered then return end
+    targetEventsRegistered = wanted
+    for _, event in ipairs(TARGET_EVENTS) do
+        if wanted then eventFrame:RegisterEvent(event) else eventFrame:UnregisterEvent(event) end
+    end
+    Debug(wanted and "Target layout applies: target and combat-start events registered."
+        or "No target layout applies: target and combat-start events unregistered.")
 end
 
 -- Apply the whole profile for the current resolution: once per login/reload (verbose, see
@@ -586,7 +629,9 @@ local function EvaluateProfileState(verbose)
     applyAfterCombat = InCombatLockdown()
 
     local profile = GetProfileForResolution(res)
+    CacheProfileLayouts(profile)
     if not profile then
+        UpdateTargetEventRegistration()
         if verbose then Print("No AutoSetup profile for resolution " .. res .. ".") end
         return
     end
@@ -597,7 +642,8 @@ local function EvaluateProfileState(verbose)
 
     ApplyScale(profile, verbose)
     ApplyControllerSupport(profile, verbose)
-    UpdateLayout(profile, verbose)
+    UpdateTargetEventRegistration()
+    UpdateLayout(verbose)
     ApplyAddonSet(profile, verbose)
     ApplyFeatureSet(profile, verbose)
 end
@@ -607,9 +653,11 @@ end
 -- state, so the flag is never reset; loading screens (which fire PLAYER_ENTERING_WORLD too) don't
 -- run it again. It is set before evaluating because switching layouts fires
 -- EDIT_MODE_LAYOUTS_UPDATED synchronously, which would otherwise run the evaluation a second time.
+-- That event only exists to trigger this evaluation, so stop listening to it.
 local function RunInitialEvaluation()
     if initDone then return end
     initDone = true
+    eventFrame:UnregisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
     EvaluateProfileState(true)
 end
 
@@ -619,10 +667,10 @@ function AutoSetup.ApplyCurrentProfile()
     if initDone then EvaluateProfileState(false) end
 end
 
--- Target/combat changes and leaving Edit Mode only need the layout of the current profile.
+-- Target/combat changes and leaving Edit Mode only need the layout of the current profile. Before
+-- the initial evaluation there is no cached profile, so this does nothing.
 local function UpdateCurrentLayout()
-    local profile = initDone and GetProfileForResolution(lastResolution)
-    if profile then UpdateLayout(profile, false) end
+    UpdateLayout(false)
 end
 
 -------------------------------------------------------------------------------
@@ -644,14 +692,10 @@ end
 -- Events
 -------------------------------------------------------------------------------
 
-local eventFrame = CreateFrame("Frame")
-
+-- The target events (TARGET_EVENTS) are registered by UpdateTargetEventRegistration.
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-eventFrame:RegisterEvent("PLAYER_TARGET_CHANGED")
-eventFrame:RegisterEvent("PLAYER_SOFT_ENEMY_CHANGED")
-eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 eventFrame:RegisterEvent("UI_SCALE_CHANGED")
