@@ -688,6 +688,16 @@ local function CheckResolutionChange()
     end
 end
 
+-- A window drag or a scale change fires a burst of size/scale events. The first one
+-- schedules this check and later ones skip until it has run, so a burst costs one check.
+local resolutionCheckPending = false
+
+local function RunPendingResolutionCheck()
+    resolutionCheckPending = false
+    Debug("Resolution check after size/scale change.")
+    CheckResolutionChange()
+end
+
 -------------------------------------------------------------------------------
 -- Events
 -------------------------------------------------------------------------------
@@ -707,13 +717,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         LoadDB()
         Debug("AutoSetup loaded.")
 
-        -- Safety-net fallback: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED should catch most
-        -- resolution/scale changes immediately; this ticker exists for cases those
-        -- events don't fire reliably (e.g. some external/alt-tab monitor changes).
+        -- Safety net: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED catch most changes, but some
+        -- monitor changes (external displays, alt-tab) don't fire them reliably. Every
+        -- 20 s is rare enough not to matter; a check that finds no change is one comparison.
         C_Timer.NewTicker(20.0, CheckResolutionChange)
     elseif event == "DISPLAY_SIZE_CHANGED" or event == "UI_SCALE_CHANGED" then
         -- Small defer: the new size/scale may lag the event by a frame.
-        C_Timer.After(0.1, CheckResolutionChange)
+        if not resolutionCheckPending then
+            resolutionCheckPending = true
+            C_Timer.After(0.1, RunPendingResolutionCheck)
+        end
     elseif event == "PLAYER_ENTERING_WORLD" then
         Debug("PLAYER_ENTERING_WORLD. Current resolution: " .. GetCurrentResolution())
         -- Fallback in case EDIT_MODE_LAYOUTS_UPDATED doesn't come.
