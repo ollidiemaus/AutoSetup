@@ -402,10 +402,10 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     if panel.targetLayoutInput then panel.targetLayoutInput:SetAutoFocus(false) end
     if panel.addonsInput then panel.addonsInput:SetAutoFocus(false) end
 
-    -- Native controller support only exists on WoW Forever; hide the option entirely elsewhere
-    -- rather than showing a checkbox for a setting the current flavor doesn't have.
+    -- Native controller support needs the game's controller interface; hide the option entirely
+    -- on clients without it rather than showing a checkbox for a setting they don't have.
     if panel.controllerCheck then
-        if AutoSetup.isForever then
+        if AutoSetup.hasControllerInterface then
             if panel.controllerCheck.Text then
                 panel.controllerCheck.Text:SetText("Enable native controller support")
             end
@@ -415,7 +415,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     end
 
     if panel.baseLayoutLabel then
-        panel.baseLayoutLabel:SetText(AutoSetup.isForever
+        panel.baseLayoutLabel:SetText(AutoSetup.hasControllerInterface
             and "Base Edit Mode Layout Name (blank = controller default)"
             or "Base Edit Mode Layout Name")
     end
@@ -513,7 +513,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         RefreshProfileList(panel)
     end
 
-    C_Timer.After(0.5, function()
-        AutoSetup.RefreshOptionsList()
-    end)
+    -- Built when shown, so it's current every time and costs nothing until the panel is opened.
+    -- Save and delete refresh it while it's open.
+    panel:HookScript("OnShow", AutoSetup.RefreshOptionsList)
 end

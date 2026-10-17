@@ -18,9 +18,10 @@ _G.AutoSetup = AutoSetup -- expose to XML <OnClick>/<OnLoad> scripts, which only
 local _, _, _, tocVersion = GetBuildInfo()
 AutoSetup.isForever = (tocVersion and tocVersion >= 16000 and tocVersion < 20000) or false
 
--- Forever shares WOW_PROJECT_MAINLINE with Retail, but its content/feature set is not
--- Retail's, so exclude it here to keep any "if AutoSetup.isRetail" check Forever-safe.
-AutoSetup.isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and not AutoSetup.isForever
+-- Native controller support needs the game's controller interface (C_InputInterfaceStyle): present
+-- on Forever, absent on Retail. Checked by capability, not flavor, so a client that adds it later
+-- gets the option too; isForever is only for what depends on game content.
+AutoSetup.hasControllerInterface = C_InputInterfaceStyle ~= nil
 
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
@@ -508,13 +509,13 @@ end
 -- the new mode's layouts until the next reload), or we're blocked from changing it live and it
 -- still doesn't match the profile.
 local function IsInputModeUnsettled(profile)
-    if not AutoSetup.isForever then return false end
+    if not AutoSetup.hasControllerInterface then return false end
     local desired = profile.nativeControllerSupport or false
     return controllerSupportChangedThisSession or desired ~= (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
 end
 
 local function ApplyControllerSupport(profile, verbose)
-    if not profile or not AutoSetup.isForever then return end
+    if not profile or not AutoSetup.hasControllerInterface then return end
 
     local desired = profile.nativeControllerSupport or false
     local current = (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
@@ -568,11 +569,11 @@ end
 
 -- nil layouts leave Edit Mode alone: native controller support uses its own hidden default layout
 -- that isn't selectable from GetLayouts() and can't coexist with a keyboard/mouse layout, so the
--- client manages it. Only relevant on WoW Forever, the only flavor with this setting -- elsewhere a
--- stale nativeControllerSupport value is ignored.
+-- client manages it. Only relevant on clients with the controller interface -- elsewhere a stale
+-- nativeControllerSupport value is ignored.
 local function CacheProfileLayouts(profile)
     layoutProfile = profile
-    if not profile or (AutoSetup.isForever and profile.nativeControllerSupport) then
+    if not profile or (AutoSetup.hasControllerInterface and profile.nativeControllerSupport) then
         baseLayoutClean, targetLayoutClean = nil, nil
     else
         baseLayoutClean = CleanLayoutName(profile.editLayoutBase)

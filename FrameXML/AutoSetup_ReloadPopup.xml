@@ -124,31 +124,9 @@
         <!-- Drag Handle -->
         <Scripts>
             <OnLoad>
-                -- Set initial message text after a small delay to ensure child elements are ready
-                C_Timer.After(0.1, function()
-                    if self.Message then
-                        self.Message:SetText("AddOn configuration has changed.\nA UI reload is required to apply changes.");
-                    end
-
-                    -- Hide any inherited dialog buttons that might show duplicate labels,
-                    -- but keep our custom buttons visible.
-                    local parentName = self:GetName() or ""
-                    local keep = {
-                        [parentName .. "ReloadButton"] = true,
-                        [parentName .. "LaterButton"] = true,
-                        [parentName .. "CloseButton"] = true,
-                    }
-                    local num = self:GetNumChildren() or 0
-                    for i = 1, num do
-                        local child = select(i, self:GetChildren())
-                        if child and child.GetObjectType and child:GetObjectType() == "Button" then
-                            local n = child:GetName() or ""
-                            if not keep[n] then
-                                child:Hide()
-                            end
-                        end
-                    end
-                end);
+                -- Hide the OKAY button inherited from DialogBoxFrame; our own buttons replace it.
+                local inherited = _G[(self:GetName() or "") .. "Button"]
+                if inherited then inherited:Hide() end
             </OnLoad>
             
             <OnShow>
