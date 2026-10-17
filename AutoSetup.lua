@@ -22,7 +22,6 @@ AutoSetup.isForever = (tocVersion and tocVersion >= 16000 and tocVersion < 20000
 -- Retail's, so exclude it here to keep any "if AutoSetup.isRetail" check Forever-safe.
 AutoSetup.isRetail = (WOW_PROJECT_ID == WOW_PROJECT_MAINLINE) and not AutoSetup.isForever
 
-local defaultDB = {}
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
@@ -81,20 +80,94 @@ AutoSetup.GetCurrentResolution = GetCurrentResolution
 -- SavedVariables helpers
 -------------------------------------------------------------------------------
 
-local function GetDB()
-    AutoSetupDB = AutoSetupDB or defaultDB
-    return AutoSetupDB
+-- AutoSetupDB = { version = DB_VERSION, profiles = { ["WIDTHxHEIGHT"] = profile } }. The unversioned
+-- shape before it, with the profiles at the top level, is version 1.
+local DB_VERSION = 2
+
+-- The table the profile database functions read and write: AutoSetupDB.profiles once LoadDB has run.
+-- When the saved data can't be used (a failed migration), it stays a table that lives for this session
+-- only, so the client writes the saved data back as it was.
+local profiles = {}
+
+-- Migrations[n](data) returns the version n data as version n + 1. Each runs once per saved file:
+-- MigrateDB stores the new version number with the result.
+local Migrations = {
+    -- 1 -> 2: profiles move under their own key, the old auto-reload flag and suppressChat go, and
+    -- features of renamed providers take the new name. When both names are saved, the new one's value stays.
+    [1] = function(data)
+        local renamedProviders = { ForeverQoL = "QoL" } -- Forever QoL became Quality of Life
+        local migrated = {}
+        for resolution, profile in pairs(data) do
+            if type(profile) == "table" then
+                profile.autoReload = nil
+                profile.suppressChat = nil
+                local featureSet = profile.featureSet
+                if type(featureSet) == "table" then
+                    local newKeys = {}
+                    for key in pairs(featureSet) do
+                        local provider, feature = AutoSetup.SplitFeatureKey(key)
+                        local renamed = provider and renamedProviders[provider]
+                        if renamed then newKeys[key] = renamed .. ":" .. feature end
+                    end
+                    for key, newKey in pairs(newKeys) do
+                        if featureSet[newKey] == nil then featureSet[newKey] = featureSet[key] end
+                        featureSet[key] = nil
+                    end
+                end
+                migrated[resolution] = profile
+            end
+        end
+        return { profiles = migrated }
+    end,
+}
+
+-- Migrate a copy of the saved data from version to DB_VERSION, one version at a time, so a step that
+-- fails leaves the saved data as it was.
+local function MigrateDB(db, version)
+    local data = CopyTable(db)
+    while version < DB_VERSION do
+        local migrate = Migrations[version] or error("no migration from saved data version " .. tostring(version))
+        data = migrate(data)
+        version = version + 1
+        data.version = version
+    end
+    return data
+end
+
+-- Run once, at ADDON_LOADED. Data from a newer AutoSetup, or data that fails to migrate, is left as it
+-- is: no migration runs on it and nothing resets it.
+local function LoadDB()
+    if AutoSetupDB == nil then
+        AutoSetupDB = { version = DB_VERSION, profiles = {} }
+    elseif type(AutoSetupDB) == "table" then
+        local version = AutoSetupDB.version
+        if version == nil then version = 1 end
+        if type(version) == "number" and version < DB_VERSION then
+            local ok, migrated = xpcall(MigrateDB, CallErrorHandler, AutoSetupDB, version)
+            if ok then
+                AutoSetupDB = migrated
+                Debug("Saved data migrated from version " .. version .. " to " .. DB_VERSION .. ".")
+            end
+        end
+    end
+
+    local db = AutoSetupDB
+    if type(db) == "table" and type(db.version) == "number" and db.version >= DB_VERSION
+        and type(db.profiles) == "table" then
+        profiles = db.profiles
+    else
+        Print("Couldn't read the saved profiles. They are kept as they were, "
+            .. "and profile changes made this session won't be saved.")
+    end
 end
 
 local function GetProfileForResolution(resolution)
-    local db = GetDB()
-    return db[resolution]
+    return profiles[resolution]
 end
 
 -- Ensure and return a profile table for a given resolution key.
 local function EnsureProfile(resolution)
-    local db = GetDB()
-    db[resolution] = db[resolution] or {
+    profiles[resolution] = profiles[resolution] or {
         name = resolution,
         editLayoutBase = nil,
         editLayoutTarget = nil,
@@ -103,17 +176,16 @@ local function EnsureProfile(resolution)
         addonSet = nil, -- [addonName] = true/false
         featureSet = nil, -- ["Addon:feature"] = true/false
     }
-    return db[resolution]
+    return profiles[resolution]
 end
 
 local function DeleteProfile(resolution)
-    local db = GetDB()
-    db[resolution] = nil
+    profiles[resolution] = nil
 end
 
 -- Iterate all profiles: for resolution, profile in IterateProfiles() do ... end
 local function IterateProfiles()
-    return next, GetDB(), nil
+    return next, profiles, nil
 end
 
 AutoSetup.GetProfileForResolution = GetProfileForResolution
@@ -354,11 +426,6 @@ AutoSetup.FeatureProviders = {
     QoL = "QoLAPI",
 }
 
--- Providers that were renamed: old folder name -> new one. Saved profiles are moved over on load.
-AutoSetup.RenamedFeatureProviders = {
-    ForeverQoL = "QoL", -- Forever QoL became Quality of Life
-}
-
 -- The API table of a provider (folder name), or nil when it isn't loaded. A global that isn't a
 -- table offering both functions (an outdated addon, another addon using the same name) counts as
 -- not loaded.
@@ -593,26 +660,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 ~= addonName then return end
         self:UnregisterEvent("ADDON_LOADED")
-        local db = GetDB()
-        -- Purge legacy auto-reload flags from saved profiles (we use the popup instead), and move
-        -- features of renamed providers to the new name ("ForeverQoL:viewport" -> "QoL:viewport").
-        for _res, profile in pairs(db) do
-            if type(profile) == "table" then
-                profile.autoReload = nil
-                if type(profile.featureSet) == "table" then
-                    local moved = {}
-                    for key in pairs(profile.featureSet) do
-                        local provider, feature = AutoSetup.SplitFeatureKey(key)
-                        local renamed = provider and AutoSetup.RenamedFeatureProviders[provider]
-                        if renamed then moved[key] = renamed .. ":" .. feature end
-                    end
-                    for key, newKey in pairs(moved) do
-                        profile.featureSet[newKey] = profile.featureSet[key]
-                        profile.featureSet[key] = nil
-                    end
-                end
-            end
-        end
+        LoadDB()
         Debug("AutoSetup loaded.")
 
         -- Safety-net fallback: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED should catch most
