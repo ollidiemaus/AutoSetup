@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # WoW runs Lua 5.1, so lint and syntax checks run on exactly that version.
+      - uses: leafo/gh-actions-lua@v13
+        with:
+          luaVersion: "5.1.5"
+
+      - uses: leafo/gh-actions-luarocks@v6
+
+      - name: Install luacheck
+        run: luarocks install luacheck
+
+      - name: Lint
+        run: luacheck .
+
+      - name: Lua syntax
+        run: git ls-files '*.lua' | xargs -n1 luac -p
