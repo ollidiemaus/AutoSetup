@@ -298,7 +298,8 @@ local function RefreshProfileList(panel)
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = (data.addonSet or data.featureSet) and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "default"
-        local controllerText = data.nativeControllerSupport and " | |cff00ff00Controller|r" or ""
+        local controllerText = (AutoSetup.hasControllerInterface and data.nativeControllerSupport)
+            and " | |cff00ff00Controller|r" or ""
 
         row.text:SetText(displayName)
         row.subtext:SetText(res ..
@@ -447,7 +448,10 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             local baseLayout = panel.baseLayoutInput:GetText() or ""
             local targetLayout = panel.targetLayoutInput:GetText() or ""
             local scale = tonumber(string.format("%.2f", panel.scaleSlider:GetValue()))
-            local controllerSupport = panel.controllerCheck and panel.controllerCheck:GetChecked() and true or false
+            -- Without the controller interface the checkbox is hidden but Edit still sets it from the
+            -- stored value; store false so a stale true neither survives the save nor allows a blank base.
+            local controllerSupport = AutoSetup.hasControllerInterface and panel.controllerCheck
+                and panel.controllerCheck:GetChecked() and true or false
             local addonsStr = panel.addonsInput:GetText() or ""
 
             if res == "" then
@@ -455,7 +459,9 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
                 return
             end
             if baseLayout == "" and not controllerSupport then
-                ASP("Please enter a base Edit Mode layout name, or enable native controller support.")
+                ASP(AutoSetup.hasControllerInterface
+                    and "Please enter a base Edit Mode layout name, or enable native controller support."
+                    or "Please enter a base Edit Mode layout name.")
                 return
             end
 

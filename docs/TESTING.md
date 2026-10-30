@@ -201,7 +201,9 @@ AddOns box set to the opposite of QoL's current setting, so AutoSetup has to swi
 
 1. Log in and open `/as` straight away: the profile list shows every profile.
 2. There is no "Suppress chat" checkbox.
-3. The native controller support checkbox shows on Forever and is hidden on Retail.
+3. On clients with the controller interface (Forever) the native controller support checkbox shows
+   and the base layout label says `(blank = controller default)`. On clients without it (Retail
+   12.1.7 today) the checkbox is hidden and the label is plain `Base Edit Mode Layout Name`.
 4. Save a new profile and delete one: the list updates each time while the panel is open. Close and
    reopen the panel: the list is still correct.
 
@@ -212,3 +214,17 @@ AddOns box set to the opposite of QoL's current setting, so AutoSetup has to swi
    it lists both.
 2. Click **Reload UI**: the UI reloads. Outside combat, `/autosetup testreload` reloads too; in
    combat it prints `Cannot reload UI in combat. Reload skipped.`
+
+### 15. Retail only: controller support saved before the capability fix
+
+Setup: with the game closed, set `["nativeControllerSupport"] = true` on the current resolution's
+profile in `WTF/Account/<account>/SavedVariables/AutoSetup.lua`; the profile has a base and a
+target layout.
+
+1. Log in: the base layout applies and no reload popup appears. `/autosetup debug` shows
+   `Target layout applies: ... registered.` and targeting a mob switches to the target layout.
+2. The profile list in `/as` doesn't show `Controller` for that profile.
+3. Click the profile's Edit button and save it. After logout the file shows
+   `["nativeControllerSupport"] = false`.
+4. Clear the base layout and save: `Please enter a base Edit Mode layout name.` prints and nothing
+   is saved.

@@ -18,11 +18,6 @@ _G.AutoSetup = AutoSetup -- expose to XML <OnClick>/<OnLoad> scripts, which only
 local _, _, _, tocVersion = GetBuildInfo()
 AutoSetup.isForever = (tocVersion and tocVersion >= 16000 and tocVersion < 20000) or false
 
--- Native controller support needs the game's controller interface (C_InputInterfaceStyle): present
--- on Forever, absent on Retail. Checked by capability, not flavor, so a client that adds it later
--- gets the option too; isForever is only for what depends on game content.
-AutoSetup.hasControllerInterface = C_InputInterfaceStyle ~= nil
-
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
@@ -34,6 +29,13 @@ local controllerSupportChangedThisSession = false -- true once we've SetCVar'd t
 -- toggling the setting in Forever's Options menu -- the only line that changed was
 -- InputDeviceInterfaceStyle going from unset (default 0) to "1".
 local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
+
+-- Native controller support needs the game's controller interface: on Forever, not on Retail.
+-- Checked by capability, not flavor, so a client that adds it later gets the option too; isForever
+-- is only for what depends on game content. The C_InputInterfaceStyle namespace alone isn't enough:
+-- Retail 12.1.7 ships it without the interface. Like Blizzard's InputUtil.IsGamepadUISupported(),
+-- also require the CVar to exist.
+AutoSetup.hasControllerInterface = C_InputInterfaceStyle ~= nil and GetCVar(CONTROLLER_SUPPORT_CVAR) ~= nil
 
 -------------------------------------------------------------------------------
 -- Utility helpers
