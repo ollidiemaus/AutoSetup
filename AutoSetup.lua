@@ -24,7 +24,7 @@ local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
 local applyAfterCombat = false     -- the last full evaluation ran in combat; run it again once combat ends
 local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
-local controllerSupportChangedThisSession = false -- true once we've SetCVar'd this session; Edit Mode won't offer the new mode's layouts until the next reload
+local controllerSupportChangedThisSession = false -- true once our SetCVar took this session; Edit Mode won't offer the new mode's layouts until the next reload
 
 -- Native controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
 -- toggling the setting in Forever's Options menu -- the only line that changed was
@@ -554,19 +554,25 @@ local function ApplyControllerSupport(profile, verbose)
         return
     end
 
-    -- InputDeviceInterfaceStyle is a protected CVar. Confirmed in-game: WoW allows an addon to
-    -- set it during the initial post-login/reload evaluation (verbose == true, see
+    -- InputDeviceInterfaceStyle is a protected CVar. Confirmed in-game: WoW usually allows an
+    -- addon to set it during the initial post-login/reload evaluation (verbose == true, see
     -- EvaluateProfileState's callers), but blocks it later in a live session (e.g. triggered by
-    -- a resolution change) with "Interface action failed because of an addon". Either way,
-    -- setting the CVar alone doesn't make it take functional effect -- confirmed in-game that a
-    -- reload is still needed afterwards, so apply it as soon as we're able to, then always ask
-    -- for that follow-up reload.
-    local justApplied = false
+    -- a resolution change) with "Interface action failed because of an addon". The initial
+    -- evaluation can be blocked too (ADDON_ACTION_BLOCKED, reason unknown), so read it back
+    -- before saying it changed. Setting the CVar alone doesn't make it take functional effect
+    -- either -- confirmed in-game that a reload is still needed afterwards, so apply it as soon
+    -- as we're able to, then always ask for that follow-up reload.
+    local justApplied, blocked = false, false
     if verbose and not InCombatLockdown() then
         Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
         SetCVar(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
-        controllerSupportChangedThisSession = true
-        justApplied = true
+        if (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1") == desired then
+            controllerSupportChangedThisSession = true
+            justApplied = true
+        else
+            Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " was blocked.")
+            blocked = true
+        end
     end
 
     local isNewMismatch = (lastAppliedControllerSupport ~= desired)
@@ -577,6 +583,10 @@ local function ApplyControllerSupport(profile, verbose)
             ShowReloadPopup("controller", "Native controller support was just set to " ..
                 (desired and "ON" or "OFF") .. " for '" .. (profile.name or "this profile") ..
                 "'. Reload once more to finish applying it.")
+        elseif blocked then
+            ShowReloadPopup("controller", "The game blocked setting controller support " ..
+                (desired and "ON" or "OFF") .. " for '" .. (profile.name or "this profile") ..
+                "'. Reload to try again, or change it in Options > Controller.")
         else
             ShowReloadPopup("controller", "Controller support should be " .. (desired and "ON" or "OFF") ..
                 " for '" .. (profile.name or "this profile") .. "'.")

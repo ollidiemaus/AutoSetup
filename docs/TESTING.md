@@ -164,6 +164,11 @@ prompts until the controller interface is on).
 
 1. `/autosetup debug` after the last reload shows `No target layout applies: ... unregistered.`
 2. Targeting mobs and entering combat don't change the Edit Mode layout.
+3. Log in at a resolution whose profile wants the other controller mode. If BugSack shows
+   `ADDON_ACTION_BLOCKED` for `SetCVar` (it doesn't happen every time), the popup says the game
+   blocked it and to reload to try again or change it in Options > Controller, not that it was just
+   set, and the debug log shows `Setting InputDeviceInterfaceStyle was blocked.` Without the block,
+   the popup says it was just set.
 
 ### 10. Window resizing
 
