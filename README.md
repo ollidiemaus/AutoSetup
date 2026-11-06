@@ -93,7 +93,7 @@ In the options panel:
    - Optional alternate layout used while in combat or when you have a target.
    - Leave blank if you only want one layout for this resolution, or if this profile has native controller support enabled (same reason as above).
 5. **UI Scale**
-   - Adjust the slider if you want a per‑profile UI scale override.
+   - Tick **Set UI scale** and adjust the slider for a per‑profile UI scale. Unticked leaves the scale alone.
 6. **Damage Meter**
    - Click the button to step through `Damage Meter: Leave alone`, `On` and `Off`.
    - On and Off apply whenever the profile is applied. In combat the change waits until combat ends.

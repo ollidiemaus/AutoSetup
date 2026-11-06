@@ -18,16 +18,16 @@ globals = {
 -- WoW API the addon reads. Keep this list explicit: an unexpected global is usually a typo.
 read_globals = {
     -- Lua extensions in the WoW client
-    "date",
+    "date", "wipe",
     -- Namespaces
-    "C_AddOns", "C_CVar", "C_DamageMeter", "C_EditMode", "C_InputInterfaceStyle", "C_Timer", "C_UI", "Settings", "EventRegistry",
+    "C_AddOns", "C_CVar", "C_DamageMeter", "C_EditMode", "C_EventUtils", "C_InputInterfaceStyle", "C_Timer", "C_UI", "Settings", "Enum", "EventRegistry",
     -- Frames and UI (AutoSetupReloadPopup* are named in FrameXML/AutoSetup_ReloadPopup.xml)
     "CreateFrame", "UIParent", "EditModeManagerFrame", "InterfaceOptionsFrame",
     "InterfaceOptionsFrame_OpenToCategory", "InterfaceOptions_AddCategory",
     "AutoSetupReloadPopup", "AutoSetupReloadPopupMessage",
     -- Addons
-    "DisableAddOn", "EnableAddOn", "GetAddOnInfo", "GetNumAddOns", "LoadAddOn",
+    "DisableAddOn", "EnableAddOn", "GetAddOnInfo", "GetNumAddOns",
     -- Client
-    "CallErrorHandler", "CopyTable", "GetBuildInfo", "GetCVar", "SetCVar", "GetPhysicalScreenSize",
+    "CallErrorHandler", "CopyTable", "GetCVar", "SetCVar", "GetPhysicalScreenSize",
     "InCombatLockdown", "ReloadUI", "UnitAffectingCombat", "UnitExists",
 }

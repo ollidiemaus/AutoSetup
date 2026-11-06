@@ -137,21 +137,25 @@ local function ValidateFeatures(features)
     end
 end
 
--- Retrieve available Edit Mode layouts (names)
-local function GetLayoutNames()
-    if not C_EditMode or not C_EditMode.GetLayouts then
-        if C_AddOns and C_AddOns.LoadAddOn then
-            pcall(C_AddOns.LoadAddOn, "Blizzard_EditMode")
-        else
-            pcall(LoadAddOn, "Blizzard_EditMode")
-        end
+-- Blizzard's own layout dropdown hides the presets of the other interface (keyboard and mouse or
+-- controller) too.
+local function IsOtherInterfacePreset(layoutInfo)
+    if layoutInfo.layoutType ~= Enum.EditModeLayoutType.Preset or layoutInfo.interfaceStyle == nil then
+        return false
     end
+    local style = C_InputInterfaceStyle and C_InputInterfaceStyle.GetCurrentStyle
+        and C_InputInterfaceStyle.GetCurrentStyle()
+    return style ~= nil and style ~= layoutInfo.interfaceStyle
+end
 
+-- The names of the layouts a profile can use: the same list ApplyEditLayoutInternal searches, so
+-- presets are included (C_EditMode.GetLayouts has only the saved ones).
+local function GetLayoutNames()
     local names = {}
-    local layouts = C_EditMode and C_EditMode.GetLayouts and C_EditMode.GetLayouts()
-    if layouts and layouts.layouts then
-        for _, layoutInfo in pairs(layouts.layouts) do
-            if layoutInfo.layoutName then
+    local manager = EditModeManagerFrame
+    if manager and manager:IsInitialized() then
+        for _, layoutInfo in ipairs(manager:GetLayouts()) do
+            if layoutInfo.layoutName and not IsOtherInterfacePreset(layoutInfo) then
                 table.insert(names, layoutInfo.layoutName)
             end
         end
@@ -250,6 +254,13 @@ local function SetDamageMeterState(panel, state)
     panel.damageMeterButton:SetText("Damage Meter: " .. stateText)
 end
 
+-- nil leaves the UI scale alone; the slider only matters with the box ticked.
+local function SetScaleOverride(panel, scale)
+    panel.scaleCheck:SetChecked(scale ~= nil)
+    panel.scaleSlider:SetEnabled(scale ~= nil)
+    panel.scaleSlider:SetValue(scale or tonumber(GetCVar("uiScale")) or 1.0)
+end
+
 local function RefreshProfileList(panel)
     if not panel or not panel.listContent then return end
 
@@ -304,7 +315,7 @@ local function RefreshProfileList(panel)
         local displayName = data.name or "Profile"
         local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = (data.addonSet or data.featureSet) and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
-        local scaleText = data.scale and tostring(data.scale) or "default"
+        local scaleText = data.scale and tostring(data.scale) or "unchanged"
         local controllerText = (AutoSetup.hasControllerInterface and data.nativeControllerSupport)
             and " | |cff00ff00Controller|r" or ""
         local damageMeterText = ""
@@ -332,7 +343,7 @@ local function RefreshProfileList(panel)
             panel.resInput:SetText(res)
             panel.baseLayoutInput:SetText(data.editLayoutBase or "")
             panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
-            panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
+            SetScaleOverride(panel, data.scale)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
             SetDamageMeterState(panel, data.damageMeter)
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet or {}, data.featureSet or {}))
@@ -370,6 +381,9 @@ local function RefreshProfileList(panel)
         row:SetPoint("TOPLEFT", 0, 0)
         row:Show()
     end
+
+    -- The scroll range follows the child's height; without this, rows past it can't be reached.
+    panel.listContent:SetHeight(math.max(-yOffset, 40))
 end
 
 function AutoSetup_OpenOptionsPanel()
@@ -395,8 +409,9 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.baseLayoutInput     = _G[baseName .. "BaseLayoutInput"]
     panel.baseLayoutLabel     = _G[baseName .. "BaseLayoutLabel"]
     panel.targetLayoutInput   = _G[baseName .. "TargetLayoutInput"]
+    panel.scaleCheck          = _G[baseName .. "ScaleCheck"]
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
-    panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"]
+    panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"] -- the slider template's $parentText
     panel.controllerCheck     = _G[baseName .. "ControllerCheck"]
     panel.damageMeterButton   = _G[baseName .. "DamageMeterButton"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
@@ -475,7 +490,8 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             local res = panel.resInput:GetText() or ""
             local baseLayout = panel.baseLayoutInput:GetText() or ""
             local targetLayout = panel.targetLayoutInput:GetText() or ""
-            local scale = tonumber(string.format("%.2f", panel.scaleSlider:GetValue()))
+            local scale = panel.scaleCheck:GetChecked()
+                and tonumber(string.format("%.2f", panel.scaleSlider:GetValue())) or nil
             -- Without the controller interface the checkbox is hidden but Edit still sets it from the
             -- stored value; store false so a stale true neither survives the save nor allows a blank base.
             local controllerSupport = AutoSetup.hasControllerInterface and panel.controllerCheck
@@ -517,7 +533,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             panel.resInput:SetText("")
             panel.baseLayoutInput:SetText("")
             panel.targetLayoutInput:SetText("")
-            panel.scaleSlider:SetValue(tonumber(GetCVar("uiScale")) or 1.0)
+            SetScaleOverride(panel, nil)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(false) end
             SetDamageMeterState(panel, nil)
             panel.addonsInput:SetText("")
@@ -528,10 +544,14 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         panel.scaleSlider:SetMinMaxValues(0.65, 1.15)
         panel.scaleSlider:SetValueStep(0.01)
         panel.scaleSlider:SetObeyStepOnDrag(true)
-        panel.scaleSlider:SetValue(tonumber(GetCVar("uiScale")) or 1.0)
         panel.scaleSlider:SetScript("OnValueChanged", function(self, value)
             panel.scaleSliderText:SetText(string.format("UI Scale: %.2f", value))
         end)
+        if panel.scaleCheck.Text then panel.scaleCheck.Text:SetText("Set UI scale") end
+        panel.scaleCheck:HookScript("OnClick", function(self)
+            panel.scaleSlider:SetEnabled(self:GetChecked())
+        end)
+        SetScaleOverride(panel, nil)
         panel.scaleSliderText:SetText(string.format("UI Scale: %.2f", panel.scaleSlider:GetValue()))
     end
 
@@ -552,4 +572,6 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     -- Built when shown, so it's current every time and costs nothing until the panel is opened.
     -- Save and delete refresh it while it's open.
     panel:HookScript("OnShow", AutoSetup.RefreshOptionsList)
+    -- The popup hangs off UIParent, so it wouldn't close with the settings by itself.
+    panel:HookScript("OnHide", HideLayoutPopup)
 end

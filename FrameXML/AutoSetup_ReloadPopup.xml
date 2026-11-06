@@ -3,7 +3,7 @@
 ..\FrameXML\UI.xsd">
 
     <!-- AutoSetup Reload Popup Frame -->
-    <Frame name="AutoSetupReloadPopup" parent="UIParent" inherits="DialogBoxFrame" movable="true" enableMouse="true" frameStrata="DIALOG">
+    <Frame name="AutoSetupReloadPopup" parent="UIParent" inherits="DialogBoxFrame" movable="true" enableMouse="true" clampedToScreen="true" frameStrata="DIALOG">
         <Size>
             <AbsDimension x="400" y="160" />
         </Size>
@@ -87,16 +87,7 @@
                 </Anchors>
                 <Scripts>
                     <OnClick>
-                        -- Go through AutoSetup.ExecuteReload() so the combat-lockdown
-                        -- guard applies here too; fall back to a direct call only if
-                        -- the AutoSetup table is somehow unavailable.
-                        if AutoSetup and AutoSetup.ExecuteReload then
-                            AutoSetup.ExecuteReload()
-                        elseif ReloadUI then
-                            ReloadUI()
-                        elseif C_UI and C_UI.Reload then
-                            C_UI.Reload()
-                        end
+                        AutoSetup.ExecuteReload()
                     </OnClick>
                 </Scripts>
             </Button>
@@ -121,14 +112,22 @@
             </Button>
         </Frames>
         
-        <!-- Drag Handle -->
         <Scripts>
             <OnLoad>
                 -- Hide the OKAY button inherited from DialogBoxFrame; our own buttons replace it.
                 local inherited = _G[(self:GetName() or "") .. "Button"]
                 if inherited then inherited:Hide() end
+                self:RegisterForDrag("LeftButton")
             </OnLoad>
-            
+
+            <OnDragStart>
+                self:StartMoving()
+            </OnDragStart>
+
+            <OnDragStop>
+                self:StopMovingOrSizing()
+            </OnDragStop>
+
             <OnShow>
                 -- Bring to front when shown
                 self:Raise();
