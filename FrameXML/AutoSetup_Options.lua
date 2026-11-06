@@ -321,7 +321,9 @@ local function RefreshProfileList(panel)
         row.delBtn:SetScript("OnClick", function()
             AutoSetup.DeleteProfile(res)
             AutoSetup.RefreshOptionsList()
-            AutoSetup.ApplyCurrentProfile()
+            -- Another resolution's profile plays no part in what applies now. Evaluating anyway
+            -- would re-apply the current profile, and deleting shouldn't change anything.
+            if res == GetCurrentResolution() then AutoSetup.ApplyCurrentProfile() end
         end)
 
         row.editBtn:SetScript("OnClick", function()

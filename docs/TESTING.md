@@ -18,8 +18,8 @@ and the profiler. `docs/` is in `.pkgmeta`'s ignore list, so this file isn't in 
   overwrites it at logout or reload, so edit it only with the game closed, and look at it after
   logging out. Back it up before items 1 to 3 and put it back afterwards.
 - **Event registration**: the event frame is local, so read it from the debug log. Every full
-  evaluation (login, reload, resolution change, profile save or delete) whose result differs from
-  the last one logs one of:
+  evaluation (login, reload, resolution change, saving a profile, deleting the current
+  resolution's) whose result differs from the last one logs one of:
   - `Target layout applies: target and combat-start events registered.`
   - `No target layout applies: target and combat-start events unregistered.`
 
@@ -253,7 +253,8 @@ Setup: a profile for this resolution with a base layout, and a second resolution
    it stays as it was, and the list row has no `Meter` text. Change to this resolution from the
    other one with the CVar at the opposite of that profile's value: it stays as it was.
 7. With a profile on `Off`, delete it, and with no profile for this resolution `/reload`: the Damage
-   Meter stays as it was.
+   Meter stays as it was. With the current profile on `Off` and the CVar turned on by hand, delete
+   the second resolution's profile: the CVar stays at 1 (recreate that profile for later steps).
 8. Open `/as` before a pull with the profile on `Off` and the CVar at 1. In combat, save it: the
    Damage Meter stays. When combat ends it goes away with nothing to do.
 9. With a profile that has a target layout, targeting mobs and entering combat log no Damage Meter

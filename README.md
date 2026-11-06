@@ -126,7 +126,7 @@ Saved profiles are listed in the scrollable list at the bottom:
     - Addon set (enabling/disabling only the configured addons) and addon features
     - Damage Meter (if the profile says On or Off)
 
-- When resolution changes (e.g. window resize, different screen), or you save or delete a profile:
+- When resolution changes (e.g. window resize, different screen), or you save a profile or delete the current resolution's:
   - AutoSetup reapplies the matching profile (if any).
 
 - When combat/target state changes:
