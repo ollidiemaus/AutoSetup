@@ -9,16 +9,6 @@ local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
 _G.AutoSetup = AutoSetup -- expose to XML <OnClick>/<OnLoad> scripts, which only see globals
 
--- WoW flavor detection (same pattern used in AutoPotion's Core/Constants.lua).
--- WOW_PROJECT_ID has no documented constant for WoW Forever yet (confirmed in-game via
--- /dump WOW_PROJECT_ID, which currently reports 1/WOW_PROJECT_MAINLINE on the Forever beta
--- client, since Forever runs on the Mainline client codebase). Detect it via interface number
--- instead: interface numbers are 5 digits (e.g. 16001 for client 1.60.1); the 16000-19999 range
--- is reserved for Forever ahead of BCC's 20000+, matching the detection used by DBM and
--- Details-Framework/Plater.
-local _, _, _, tocVersion = GetBuildInfo()
-AutoSetup.isForever = (tocVersion and tocVersion >= 16000 and tocVersion < 20000) or false
-
 local debugLog = {}                -- rolling in‑memory log for /autosetup debug
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
@@ -32,8 +22,8 @@ local controllerSupportChangedThisSession = false -- true once our SetCVar took 
 local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
 
 -- Native controller support needs the game's controller interface: on Forever, not on Retail.
--- Checked by capability, not flavor, so a client that adds it later gets the option too; isForever
--- is only for what depends on game content. The C_InputInterfaceStyle namespace alone isn't enough:
+-- Checked by capability, not flavor, so a client that adds it later gets the option too. The
+-- C_InputInterfaceStyle namespace alone isn't enough:
 -- Retail 12.1.7 ships it without the interface. Like Blizzard's InputUtil.IsGamepadUISupported(),
 -- also require the CVar to exist.
 AutoSetup.hasControllerInterface = C_InputInterfaceStyle ~= nil and GetCVar(CONTROLLER_SUPPORT_CVAR) ~= nil
@@ -139,7 +129,8 @@ local function MigrateDB(db, version)
 end
 
 -- Run once, at ADDON_LOADED. Data from a newer AutoSetup, or data that fails to migrate, is left as it
--- is: no migration runs on it and nothing resets it.
+-- is: no migration runs on it and nothing resets it. A newer file's profiles still apply, from a copy,
+-- so nothing this version does can write its shape into the file.
 local function LoadDB()
     if AutoSetupDB == nil then
         AutoSetupDB = { version = DB_VERSION, profiles = {} }
@@ -156,9 +147,13 @@ local function LoadDB()
     end
 
     local db = AutoSetupDB
-    if type(db) == "table" and type(db.version) == "number" and db.version >= DB_VERSION
-        and type(db.profiles) == "table" then
+    if type(db) == "table" and db.version == DB_VERSION and type(db.profiles) == "table" then
         profiles = db.profiles
+    elseif type(db) == "table" and type(db.version) == "number" and db.version > DB_VERSION
+        and type(db.profiles) == "table" then
+        profiles = CopyTable(db.profiles)
+        Print("These saved profiles are from a newer AutoSetup. They apply, but profile changes "
+            .. "made this session won't be saved.")
     else
         Print("Couldn't read the saved profiles. They are kept as they were, "
             .. "and profile changes made this session won't be saved.")
@@ -213,14 +208,15 @@ local function GetAddOnNameAndTitle(index)
     return GetAddOnInfo(index)
 end
 
-local function GetEnabledState(name, index)
+-- Without a character the state covers all characters, like EnableAddOn and DisableAddOn below.
+-- "Some" (enabled on other characters only, say) matches neither wish, so it gets changed.
+local function IsInDesiredState(name, index, desired)
     if C_AddOns and C_AddOns.GetAddOnEnableState then
-        -- Retail-style API: first argument is the addon name or index
-        return C_AddOns.GetAddOnEnableState(name or index) > 0
-    else
-        local _, _, _, enabled = GetAddOnInfo(name or index)
-        return not not enabled
+        local state = C_AddOns.GetAddOnEnableState(name or index)
+        return state == (desired and Enum.AddOnEnableState.All or Enum.AddOnEnableState.None)
     end
+    local _, _, _, enabled = GetAddOnInfo(name or index)
+    return (not not enabled) == desired
 end
 
 local function EnableAddon(name, index)
@@ -250,6 +246,20 @@ AutoSetup.GetAddOnNameAndTitle = GetAddOnNameAndTitle
 -- switching to a layout that's no longer wanted.
 local layoutRequest = 0
 
+-- Raw layout name -> CleanString result, so target changes don't rebuild the same strings. Wiped by
+-- every full evaluation (CacheProfileLayouts), which keeps it to the layouts of this session.
+local cleanedLayoutNames = {}
+
+local function CleanLayoutListName(name)
+    if not name then return "" end
+    local clean = cleanedLayoutNames[name]
+    if not clean then
+        clean = CleanString(name)
+        cleanedLayoutNames[name] = clean
+    end
+    return clean
+end
+
 local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, request)
     if request ~= layoutRequest then return end
 
@@ -268,15 +278,16 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
     -- unsaved changes. The EditMode.Exit callback applies the profile's layout afterwards.
     if manager and manager:IsEditModeActive() then return end
 
+    local ready = manager and manager:IsInitialized()
     local foundIndex, foundName
-    if manager and manager:IsInitialized() then
+    if ready then
         local activeInfo = manager:GetActiveLayoutInfo()
-        if activeInfo and CleanString(activeInfo.layoutName) == targetNameClean then
+        if activeInfo and CleanLayoutListName(activeInfo.layoutName) == targetNameClean then
             return
         end
 
         for i, layoutInfo in ipairs(manager:GetLayouts()) do
-            if CleanString(layoutInfo.layoutName) == targetNameClean then
+            if CleanLayoutListName(layoutInfo.layoutName) == targetNameClean then
                 foundIndex = i
                 foundName = layoutInfo.layoutName
                 break
@@ -292,7 +303,8 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
             Debug("Switched to Edit Mode layout '" .. foundName .. "' (index " .. foundIndex .. ")")
             Print("Switched to layout '" .. foundName .. "'.")
         end
-    elseif attemptsLeft > 0 then
+    elseif attemptsLeft > 0 and not ready then
+        -- Only the layouts arriving late is worth a retry; a name missing from a loaded list stays missing.
         C_Timer.After(1.0, function()
             ApplyEditLayoutInternal(targetNameClean, attemptsLeft - 1, verbose, request)
         end)
@@ -327,10 +339,10 @@ function AutoSetup.ExecuteReload()
     end
 
     Debug("Executing UI reload...")
-    if ReloadUI then
-        ReloadUI()
-    elseif C_UI and C_UI.Reload then
+    if C_UI and C_UI.Reload then
         C_UI.Reload()
+    elseif ReloadUI then
+        ReloadUI()
     else
         Debug("ERROR: No reload function available!")
         Print("ERROR: No reload function available for reload")
@@ -388,21 +400,23 @@ local function ApplyAddonSet(profile, verbose)
                     desired = true
                 end
 
-                local currentlyEnabled = GetEnabledState(name, i)
-                if desired and not currentlyEnabled then
-                    EnableAddon(name, i)
+                if not IsInDesiredState(name, i, desired) then
+                    if desired then
+                        EnableAddon(name, i)
+                        if verbose then Debug("Enabling addon: " .. name) end
+                    else
+                        DisableAddon(name, i)
+                        if verbose then Debug("Disabling addon: " .. name) end
+                    end
                     changed = true
-                    if verbose then Debug("Enabling addon: " .. name) end
-                elseif not desired and currentlyEnabled then
-                    DisableAddon(name, i)
-                    changed = true
-                    if verbose then Debug("Disabling addon: " .. name) end
                 end
             end
         end
     end
 
     if changed then
+        -- Unsaved changes are lost when the game's AddOn list closes without saving (ResetAddOns).
+        if C_AddOns and C_AddOns.SaveAddOns then C_AddOns.SaveAddOns() end
         Debug("AddOn changes detected: Showing reload popup")
         -- Show popup instead of auto-reload
         ShowReloadPopup("addonset", "AddOn configuration changed for '" .. (profile.name or "this profile") .. "'.")
@@ -427,7 +441,7 @@ end
 
 -- Addons that let AutoSetup switch their features: addon folder name -> name of the global API
 -- table. The API provides IsFeatureEnabled(feature) (nil for an unknown feature) and
--- SetFeatureEnabled(feature, enabled).
+-- SetFeatureEnabled(feature, enabled) (false when the feature couldn't be set).
 AutoSetup.FeatureProviders = {
     QoL = "QoLAPI",
 }
@@ -475,7 +489,10 @@ local function ApplyFeatureSet(profile, verbose)
             if ok and enabled == nil then
                 if verbose then Print("Unknown feature '" .. feature .. "' for " .. provider .. " in this profile.") end
             elseif ok and enabled ~= desired then
-                if AutoSetup.CallFeatureProvider(api.SetFeatureEnabled, feature, desired) then
+                local called, applied = AutoSetup.CallFeatureProvider(api.SetFeatureEnabled, feature, desired)
+                if called and applied == false then
+                    Debug("Feature " .. key .. " could not be set.")
+                elseif called then
                     Debug("Feature " .. key .. " set to " .. tostring(desired))
                 end
             end
@@ -611,6 +628,7 @@ end
 -- client manages it. Only relevant on clients with the controller interface -- elsewhere a stale
 -- nativeControllerSupport value is ignored.
 local function CacheProfileLayouts(profile)
+    wipe(cleanedLayoutNames)
     layoutProfile = profile
     if not profile or (AutoSetup.hasControllerInterface and profile.nativeControllerSupport) then
         baseLayoutClean, targetLayoutClean = nil, nil
@@ -639,11 +657,20 @@ end
 
 local eventFrame = CreateFrame("Frame")
 
--- Only needed to switch to the target layout. Combat end (PLAYER_REGEN_ENABLED) isn't among them:
--- it stays registered for the catch-up after an evaluation that ran in combat, and to leave the
--- target layout (or switch to it, if combat start couldn't) once combat ends. It fires once per combat.
-local TARGET_EVENTS = { "PLAYER_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED", "PLAYER_REGEN_DISABLED" }
+-- Only needed to switch to the target layout, along with combat start. Combat end
+-- (PLAYER_REGEN_ENABLED) isn't among them: it stays registered for the catch-up after an evaluation
+-- that ran in combat, and to leave the target layout (or switch to it, if combat start couldn't)
+-- once combat ends. It fires once per combat.
+local TARGET_CHANGE_EVENTS = { "PLAYER_TARGET_CHANGED", "PLAYER_SOFT_ENEMY_CHANGED" }
 local targetEventsRegistered = nil -- nil until the first evaluation, so that one always logs the state
+
+-- Layouts can't change in combat and combat end looks at the target anyway, so these two are also
+-- dropped for the length of a fight.
+local function SetTargetChangeEvents(registered)
+    for _, event in ipairs(TARGET_CHANGE_EVENTS) do
+        if registered then eventFrame:RegisterEvent(event) else eventFrame:UnregisterEvent(event) end
+    end
+end
 
 -- Listen to the target events only while a target layout applies, so without one AutoSetup does
 -- next to nothing during play. Recomputed on every full evaluation, after CacheProfileLayouts and
@@ -652,8 +679,11 @@ local function UpdateTargetEventRegistration()
     local wanted = targetLayoutClean ~= nil and not IsInputModeUnsettled(layoutProfile)
     if wanted == targetEventsRegistered then return end
     targetEventsRegistered = wanted
-    for _, event in ipairs(TARGET_EVENTS) do
-        if wanted then eventFrame:RegisterEvent(event) else eventFrame:UnregisterEvent(event) end
+    SetTargetChangeEvents(wanted)
+    if wanted then
+        eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    else
+        eventFrame:UnregisterEvent("PLAYER_REGEN_DISABLED")
     end
     Debug(wanted and "Target layout applies: target and combat-start events registered."
         or "No target layout applies: target and combat-start events unregistered.")
@@ -714,6 +744,14 @@ local function UpdateCurrentLayout()
     UpdateLayout(false)
 end
 
+-- The player switched the controller interface in the game's options, which works without a reload.
+-- That can settle the input mode (or unsettle it), and only a full evaluation would notice otherwise.
+local function OnInputModeChanged()
+    if not initDone then return end
+    UpdateTargetEventRegistration()
+    UpdateCurrentLayout()
+end
+
 -------------------------------------------------------------------------------
 -- Resolution monitoring (observe‑only)
 -- We never change the user's resolution; we only respond to changes.
@@ -743,13 +781,16 @@ end
 -- Events
 -------------------------------------------------------------------------------
 
--- The target events (TARGET_EVENTS) are registered by UpdateTargetEventRegistration.
+-- The target events are registered by UpdateTargetEventRegistration.
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("DISPLAY_SIZE_CHANGED")
 eventFrame:RegisterEvent("UI_SCALE_CHANGED")
+if AutoSetup.hasControllerInterface and C_EventUtils.IsEventValid("INPUT_DEVICE_INTERFACE_TRANSITION") then
+    eventFrame:RegisterEvent("INPUT_DEVICE_INTERFACE_TRANSITION")
+end
 
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" then
@@ -776,13 +817,21 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         end
     elseif event == "EDIT_MODE_LAYOUTS_UPDATED" then
         RunInitialEvaluation()
-    elseif event == "PLAYER_REGEN_ENABLED" and applyAfterCombat then
-        EvaluateProfileState(false)
-    elseif event == "PLAYER_TARGET_CHANGED"
-        or event == "PLAYER_SOFT_ENEMY_CHANGED"
-        or event == "PLAYER_REGEN_DISABLED"
-        or event == "PLAYER_REGEN_ENABLED" then
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        if targetEventsRegistered then SetTargetChangeEvents(true) end
+        if applyAfterCombat then
+            EvaluateProfileState(false)
+        else
+            UpdateCurrentLayout()
+        end
+    elseif event == "PLAYER_REGEN_DISABLED" then
         UpdateCurrentLayout()
+        SetTargetChangeEvents(false)
+    elseif event == "PLAYER_TARGET_CHANGED" or event == "PLAYER_SOFT_ENEMY_CHANGED" then
+        UpdateCurrentLayout()
+    elseif event == "INPUT_DEVICE_INTERFACE_TRANSITION" then
+        -- Fires synchronously, possibly from inside our own SetCVar; look once it has finished.
+        C_Timer.After(0, OnInputModeChanged)
     end
 end)
 

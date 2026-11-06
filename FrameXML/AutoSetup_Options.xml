@@ -193,6 +193,17 @@
                 </Layers>
             </Frame>
 
+            <!-- UI scale: unticked leaves the scale alone -->
+            <CheckButton name="$parentScaleCheck" inherits="ChatConfigCheckButtonTemplate">
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="456" y="-100"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </CheckButton>
+
             <!-- UI Scale slider -->
             <Slider name="$parentScaleSlider" minValue="0.65" maxValue="1.15" valueStep="0.01" inherits="OptionsSliderTemplate">
                 <Size>
@@ -205,19 +216,6 @@
                         </Offset>
                     </Anchor>
                 </Anchors>
-                <Layers>
-                    <Layer level="ARTWORK">
-                        <FontString name="$parentScaleSliderText" inherits="GameFontNormal">
-                            <Anchors>
-                                <Anchor point="TOP" relativePoint="BOTTOM">
-                                    <Offset>
-                                        <AbsDimension x="0" y="-4"/>
-                                    </Offset>
-                                </Anchor>
-                            </Anchors>
-                        </FontString>
-                    </Layer>
-                </Layers>
             </Slider>
 
             <!-- Damage Meter: in the right column, so it doesn't depend on the controller checkbox below -->
