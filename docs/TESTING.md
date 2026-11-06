@@ -228,3 +228,42 @@ target layout.
    `["nativeControllerSupport"] = false`.
 4. Clear the base layout and save: `Please enter a base Edit Mode layout name.` prints and nothing
    is saved.
+
+### 16. Damage Meter setting
+
+Setup: a profile for this resolution with a base layout, and a second resolution you can switch to
+(window sizes work, see item 10) with its own profile. Read the state with
+`/dump GetCVar("damageMeterEnabled")` and by whether the Damage Meter shows.
+
+1. In `/as` press the `Damage Meter:` button repeatedly: `Leave alone`, `On`, `Off`, `Leave alone`.
+   On Forever, repeat with the controller interface on, then close the settings: no freeze. The
+   button doesn't overlap anything, with the controller checkbox shown (Forever) and hidden (Retail).
+2. Set `On` with the CVar at 0 and save: the Damage Meter shows, no reload, the debug log shows
+   `Damage Meter turned on.` and the list shows `Meter On`. Set `Off` and save: it goes away, the log
+   shows `Damage Meter turned off.` and the list shows `Meter Off`. Save `Off` again: no new log line.
+   The `Meter` text doesn't run under the **Edit** button with long layout names.
+3. **Edit** on that profile shows `Damage Meter: Off`. **Clear Form** shows `Leave alone`. Saving with
+   no base layout still prints the base layout message and saves nothing, whichever state is set.
+4. With the profile on `Off`, turn the Damage Meter on in the game's advanced options, then `/reload`:
+   it is off. Do the same again and log out and in: it is off. Repeat with the profile on `On`,
+   turning it off by hand: it is on after the reload and after the login.
+5. With this profile on `Off` and the second resolution's on `On`, change between them: each change
+   sets the CVar to that profile's value, no reload.
+6. Set the profile to `Leave alone`, save, then `/reload` with the CVar at 1 and again with it at 0:
+   it stays as it was, and the list row has no `Meter` text. Change to this resolution from the
+   other one with the CVar at the opposite of that profile's value: it stays as it was.
+7. With a profile on `Off`, delete it, and with no profile for this resolution `/reload`: the Damage
+   Meter stays as it was.
+8. Open `/as` before a pull with the profile on `Off` and the CVar at 1. In combat, save it: the
+   Damage Meter stays. When combat ends it goes away with nothing to do.
+9. With a profile that has a target layout, targeting mobs and entering combat log no Damage Meter
+   line: only a full evaluation applies the setting.
+10. Save a profile with `Off`, then with `On`: Edit Mode's Damage Meter checkbox keeps its own setting
+    (with `Off` it is greyed out, which is expected).
+11. Log out. In the file, `On` is `["damageMeter"] = true`, `Off` is `false`, Leave alone has no
+    `damageMeter` key, and `version` is still 2. A profile saved before this feature has no key,
+    behaves as step 6 and lists as before.
+12. No errors in any step.
+
+A client without `C_DamageMeter` can't be run here; there the setting does nothing and the rest of the
+profile applies.

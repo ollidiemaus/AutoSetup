@@ -243,6 +243,13 @@ local function ShowLayoutPopup(anchorButton, targetEditBox)
     layoutPopup:Show()
 end
 
+-- The panel holds the form's state until save: true = On, false = Off, nil = Leave alone.
+local function SetDamageMeterState(panel, state)
+    panel.damageMeterState = state
+    local stateText = state == nil and "Leave alone" or state and "On" or "Off"
+    panel.damageMeterButton:SetText("Damage Meter: " .. stateText)
+end
+
 local function RefreshProfileList(panel)
     if not panel or not panel.listContent then return end
 
@@ -300,12 +307,16 @@ local function RefreshProfileList(panel)
         local scaleText = data.scale and tostring(data.scale) or "default"
         local controllerText = (AutoSetup.hasControllerInterface and data.nativeControllerSupport)
             and " | |cff00ff00Controller|r" or ""
+        local damageMeterText = ""
+        if data.damageMeter ~= nil then
+            damageMeterText = data.damageMeter and " | |cff00ff00Meter On|r" or " | |cffff0000Meter Off|r"
+        end
 
         row.text:SetText(displayName)
         row.subtext:SetText(res ..
             "\nBase: " ..
             (data.editLayoutBase or "?") ..
-            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText)
+            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText .. damageMeterText)
 
         row.delBtn:SetScript("OnClick", function()
             AutoSetup.DeleteProfile(res)
@@ -321,6 +332,7 @@ local function RefreshProfileList(panel)
             panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
             panel.scaleSlider:SetValue(data.scale or (tonumber(GetCVar("uiScale")) or 1.0))
             if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
+            SetDamageMeterState(panel, data.damageMeter)
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet or {}, data.featureSet or {}))
         end)
 
@@ -384,6 +396,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
     panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"]
     panel.controllerCheck     = _G[baseName .. "ControllerCheck"]
+    panel.damageMeterButton   = _G[baseName .. "DamageMeterButton"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
     panel.saveButton          = _G[baseName .. "SaveButton"]
     panel.clearButton         = _G[baseName .. "ClearButton"]
@@ -421,6 +434,19 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             or "Base Edit Mode Layout Name")
     end
 
+    -- A button that steps through the states, not a dropdown: opening a dropdown menu in the
+    -- controller interface and closing the settings has frozen the game on WoW Forever.
+    SetDamageMeterState(panel, nil)
+    panel.damageMeterButton:SetScript("OnClick", function()
+        local state = panel.damageMeterState
+        if state == nil then
+            SetDamageMeterState(panel, true)
+        elseif state then
+            SetDamageMeterState(panel, false)
+        else
+            SetDamageMeterState(panel, nil)
+        end
+    end)
 
     if panel.useCurrentResButton then
         panel.useCurrentResButton:SetScript("OnClick", function()
@@ -471,6 +497,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             profile.editLayoutTarget = (targetLayout ~= "" and targetLayout) or nil
             profile.scale = scale
             profile.nativeControllerSupport = controllerSupport
+            profile.damageMeter = panel.damageMeterState
             local addons, features = SplitFeatures(ParseAddonsString(addonsStr))
             profile.addonSet = ResolveAddonNames(addons)
             profile.featureSet = features
@@ -490,6 +517,7 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
             panel.targetLayoutInput:SetText("")
             panel.scaleSlider:SetValue(tonumber(GetCVar("uiScale")) or 1.0)
             if panel.controllerCheck then panel.controllerCheck:SetChecked(false) end
+            SetDamageMeterState(panel, nil)
             panel.addonsInput:SetText("")
         end)
     end

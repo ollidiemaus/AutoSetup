@@ -5,6 +5,7 @@ AutoSetup is a World of Warcraft addon that automatically applies **per‑resolu
 - **Edit Mode layouts** (base layout + optional combat/target layout)
 - **UI scale**
 - **AddOn enable/disable sets**
+- **The game's Damage Meter** (on, off or left alone)
 
 When you play on different devices (e.g. PC monitor, laptop, Steam Deck, TV) that run WoW at different resolutions, AutoSetup detects the current resolution and applies the right profile without you touching Edit Mode or the AddOns screen.
 
@@ -44,6 +45,11 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 
 - **UI scale per profile**
   - Optional override for `uiScale` per resolution.
+
+- **Damage Meter per profile**
+  - Each profile can turn the game's Damage Meter on or off, or leave it alone, which is what a new profile does. No reload needed.
+  - It is the same switch as the game's advanced options, not Edit Mode's Damage Meter checkbox, which only controls the preview shown while placing it.
+  - Leave alone changes nothing, and nothing restores an earlier value: a profile that needs the Damage Meter on after a profile that turned it off should say On.
 
 - **Native controller support per profile (WoW Forever only)**
   - Optional flag marking whether a profile expects WoW Forever's built-in native controller support to be on or off (e.g. on for a Steam Deck/couch profile, off for a mouse-and-keyboard profile).
@@ -88,10 +94,13 @@ In the options panel:
    - Leave blank if you only want one layout for this resolution, or if this profile has native controller support enabled (same reason as above).
 5. **UI Scale**
    - Adjust the slider if you want a per‑profile UI scale override.
-6. **Enable native controller support** (only shown on WoW Forever)
+6. **Damage Meter**
+   - Click the button to step through `Damage Meter: Leave alone`, `On` and `Off`.
+   - On and Off apply whenever the profile is applied. In combat the change waits until combat ends.
+7. **Enable native controller support** (only shown on WoW Forever)
    - Check this if the profile expects WoW Forever's native controller support to be on (leave unchecked for keyboard/mouse profiles).
    - Takes two reloads to fully apply: AutoSetup sets the CVar as soon as it can (on the next login/reload after a mismatch is detected) and asks you to reload once more for it to actually take effect. Blizzard also blocks addons from changing this setting live mid-session (e.g. right when you switch resolutions), so in that case AutoSetup shows the reload popup first to get that initial reload going. Edit Mode is left alone the whole time until the mode switch is fully confirmed.
-7. **AddOns**
+8. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
      - `WeakAuras, !Details, !Midnight Viewport`
@@ -99,7 +108,7 @@ In the options panel:
    - `!Name` = disable that addon
    - Names can be either **folder names** or **titles** from the AddOns list; the addon resolves them internally.
    - **Addon features** (no reload needed): `Addon:feature` switches a single feature of a supported addon instead of the whole addon, e.g. `QoL:viewport` turns the Viewport of Quality of Life on and `!QoL:viewport` turns it off (`QoL=viewport` works too). It is applied live whenever the profile is evaluated. If the addon isn't loaded, the entry is skipped.
-8. Click **Save / Update** to store the profile for that resolution.
+9. Click **Save / Update** to store the profile for that resolution.
 
 Saved profiles are listed in the scrollable list at the bottom:
 
@@ -115,12 +124,13 @@ Saved profiles are listed in the scrollable list at the bottom:
     - Scale (if set)
     - Base or target layout (depending on combat/target state)
     - Addon set (enabling/disabling only the configured addons) and addon features
+    - Damage Meter (if the profile says On or Off)
 
 - When resolution changes (e.g. window resize, different screen), or you save or delete a profile:
   - AutoSetup reapplies the matching profile (if any).
 
 - When combat/target state changes:
-  - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed. Scale, addons and features are left alone.
+  - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed. Scale, addons, features and the Damage Meter are left alone.
   - While Edit Mode is open it doesn't switch layouts; it catches up when you close Edit Mode.
 
 If AutoSetup detects that addons or native controller support need to change for a profile, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.

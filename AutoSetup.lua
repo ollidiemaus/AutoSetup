@@ -3,6 +3,7 @@
 --   * apply a chosen Edit Mode layout (and optional combat/target layout)
 --   * optionally set a UI scale
 --   * enable/disable a set of addons
+--   * optionally turn the game's Damage Meter on or off
 
 local addonName, AutoSetup = ...
 AutoSetup = AutoSetup or {}
@@ -178,6 +179,7 @@ local function EnsureProfile(resolution)
         nativeControllerSupport = false,
         addonSet = nil, -- [addonName] = true/false
         featureSet = nil, -- ["Addon:feature"] = true/false
+        damageMeter = nil, -- true = On, false = Off, nil = Leave alone
     }
     return profiles[resolution]
 end
@@ -506,6 +508,31 @@ local function ApplyScale(profile, verbose)
     end
 end
 
+-- The game's real on/off for the Damage Meter; its frame listens for the CVar, so no reload is needed.
+-- Edit Mode's ShowDamageMeter setting only controls the preview and is never read or written here.
+local DAMAGE_METER_CVAR = "damageMeterEnabled"
+local GetCVarValue = (C_CVar and C_CVar.GetCVar) or GetCVar
+local SetCVarValue = (C_CVar and C_CVar.SetCVar) or SetCVar
+
+-- nil (Leave alone) changes nothing, and nothing restores an earlier value. Only a client without
+-- C_DamageMeter is skipped: IsDamageMeterAvailable() can change by character and the game's frame
+-- checks it anyway. A change skipped in combat is caught up by EvaluateProfileState's applyAfterCombat.
+local function ApplyDamageMeter(profile, verbose)
+    if not profile or profile.damageMeter == nil or not C_DamageMeter then return end
+
+    local desired = profile.damageMeter and "1" or "0"
+    local current = GetCVarValue(DAMAGE_METER_CVAR)
+    if not current or current == desired then return end
+
+    if InCombatLockdown() then
+        if verbose then Print("Cannot change the Damage Meter in combat.") end
+        return
+    end
+
+    SetCVarValue(DAMAGE_METER_CVAR, desired)
+    Debug("Damage Meter turned " .. (profile.damageMeter and "on" or "off") .. ".")
+end
+
 -- True when Edit Mode should be left alone because the input mode (keyboard/mouse vs. controller)
 -- isn't confirmed settled yet -- either we changed it ourselves this session (Edit Mode won't offer
 -- the new mode's layouts until the next reload), or we're blocked from changing it live and it
@@ -593,7 +620,7 @@ local function GetDesiredLayout()
 end
 
 -- Switch to the layout the current profile wants right now. This is all that target and combat
--- changes do, so it stays cheap and leaves scale, addons and features alone.
+-- changes do, so it stays cheap and leaves scale, addons, features and the Damage Meter alone.
 local function UpdateLayout(verbose)
     -- Edit Mode won't offer the right layouts until the input mode is settled.
     if not layoutProfile or IsInputModeUnsettled(layoutProfile) then return end
@@ -649,6 +676,7 @@ local function EvaluateProfileState(verbose)
     UpdateLayout(verbose)
     ApplyAddonSet(profile, verbose)
     ApplyFeatureSet(profile, verbose)
+    ApplyDamageMeter(profile, verbose)
 end
 
 -- The one verbose evaluation per login/reload, on whichever comes first: Edit Mode's layouts

@@ -220,6 +220,20 @@
                 </Layers>
             </Slider>
 
+            <!-- Damage Meter: in the right column, so it doesn't depend on the controller checkbox below -->
+            <Button name="$parentDamageMeterButton" inherits="GameMenuButtonTemplate">
+                <Size>
+                    <AbsDimension x="200" y="22"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="460" y="-200"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+
             <!-- Native controller support (WoW Forever) -->
             <CheckButton name="$parentControllerCheck" inherits="ChatConfigCheckButtonTemplate">
                 <Anchors>
