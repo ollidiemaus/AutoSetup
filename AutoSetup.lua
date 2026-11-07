@@ -15,6 +15,8 @@ local initDone = false             -- the one verbose evaluation per login/reloa
 local applyAfterCombat = false     -- the last full evaluation ran in combat; run it again once combat ends
 local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
 local controllerSupportChangedThisSession = false -- true once our SetCVar took this session; Edit Mode won't offer the new mode's layouts until the next reload
+local controllerSupportSetAtLogin = false -- our SetCVar took at PLAYER_LOGIN; the initial evaluation asks for the follow-up reload
+local controllerSupportBlocked = false -- the game refused our SetCVar at PLAYER_LOGIN
 
 -- Native controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
 -- toggling the setting in Forever's Options menu -- the only line that changed was
@@ -560,53 +562,67 @@ local function IsInputModeUnsettled(profile)
     return controllerSupportChangedThisSession or desired ~= (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
 end
 
-local function ApplyControllerSupport(profile, verbose)
+-- InputDeviceInterfaceStyle is a protected CVar, and this is the only place that sets it. Confirmed
+-- in-game: an addon's SetCVar on it from EDIT_MODE_LAYOUTS_UPDATED or later in a session can be
+-- blocked with ADDON_ACTION_BLOCKED, and it's not known why, so nothing after PLAYER_LOGIN tries.
+-- This can pass without acting and the value still differ by the initial evaluation (cause unknown:
+-- it may arrive after PLAYER_LOGIN on a first login, or the attempt was skipped), so
+-- ApplyControllerSupport asks for a reload, which comes back through here. Read it back: a blocked
+-- SetCVar doesn't stop the caller.
+local function ApplyControllerSupportAtLogin()
+    if not AutoSetup.hasControllerInterface or InCombatLockdown() then return end
+    local res = GetCurrentResolution()
+    local profile = GetProfileForResolution(res)
+    local current = GetCVar(CONTROLLER_SUPPORT_CVAR)
+    Debug("PLAYER_LOGIN: " .. res .. ", " .. CONTROLLER_SUPPORT_CVAR .. " = " .. tostring(current) ..
+        ", profile: " .. tostring(profile and profile.name))
+    if not profile then return end
+
+    local desired = profile.nativeControllerSupport or false
+    if desired == (current == "1") then return end
+
+    Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
+    SetCVar(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
+    if (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1") == desired then
+        controllerSupportChangedThisSession = true
+        controllerSupportSetAtLogin = true
+    else
+        Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " was blocked.")
+        controllerSupportBlocked = true
+    end
+end
+
+-- Reports the result; only ApplyControllerSupportAtLogin changes it. Setting the CVar alone doesn't
+-- make it take functional effect -- confirmed in-game that a reload is still needed afterwards.
+local function ApplyControllerSupport(profile)
     if not profile or not AutoSetup.hasControllerInterface then return end
 
     local desired = profile.nativeControllerSupport or false
     local current = (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
+    local state = desired and "ON" or "OFF"
+    local name = profile.name or "this profile"
+    local setAtLogin = controllerSupportSetAtLogin
+    controllerSupportSetAtLogin = false
 
     if desired == current then
         lastAppliedControllerSupport = desired
-        return
-    end
-
-    -- InputDeviceInterfaceStyle is a protected CVar. Confirmed in-game: WoW usually allows an
-    -- addon to set it during the initial post-login/reload evaluation (verbose == true, see
-    -- EvaluateProfileState's callers), but blocks it later in a live session (e.g. triggered by
-    -- a resolution change) with "Interface action failed because of an addon". The initial
-    -- evaluation can be blocked too (ADDON_ACTION_BLOCKED, reason unknown), so read it back
-    -- before saying it changed. Setting the CVar alone doesn't make it take functional effect
-    -- either -- confirmed in-game that a reload is still needed afterwards, so apply it as soon
-    -- as we're able to, then always ask for that follow-up reload.
-    local justApplied, blocked = false, false
-    if verbose and not InCombatLockdown() then
-        Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
-        SetCVar(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
-        if (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1") == desired then
-            controllerSupportChangedThisSession = true
-            justApplied = true
-        else
-            Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " was blocked.")
-            blocked = true
+        if setAtLogin then
+            ShowReloadPopup("controller", "Native controller support was just set to " .. state ..
+                " for '" .. name .. "'. Reload once more to finish applying it.")
         end
+        return
     end
 
     local isNewMismatch = (lastAppliedControllerSupport ~= desired)
     lastAppliedControllerSupport = desired
 
     if isNewMismatch then
-        if justApplied then
-            ShowReloadPopup("controller", "Native controller support was just set to " ..
-                (desired and "ON" or "OFF") .. " for '" .. (profile.name or "this profile") ..
-                "'. Reload once more to finish applying it.")
-        elseif blocked then
-            ShowReloadPopup("controller", "The game blocked setting controller support " ..
-                (desired and "ON" or "OFF") .. " for '" .. (profile.name or "this profile") ..
-                "'. Reload to try again, or change it in Options > Controller.")
+        if controllerSupportBlocked then
+            ShowReloadPopup("controller", "The game blocked setting controller support " .. state ..
+                " for '" .. name .. "'. Reload to try again, or change it in Options > Controller.")
         else
-            ShowReloadPopup("controller", "Controller support should be " .. (desired and "ON" or "OFF") ..
-                " for '" .. (profile.name or "this profile") .. "'.")
+            ShowReloadPopup("controller", "Controller support should be " .. state .. " for '" .. name ..
+                "'. Reload to apply it, or change it in Options > Controller.")
         end
     end
 end
@@ -711,7 +727,7 @@ local function EvaluateProfileState(verbose)
     end
 
     ApplyScale(profile, verbose)
-    ApplyControllerSupport(profile, verbose)
+    ApplyControllerSupport(profile)
     UpdateTargetEventRegistration()
     UpdateLayout(verbose)
     ApplyAddonSet(profile, verbose)
@@ -783,6 +799,7 @@ end
 
 -- The target events are registered by UpdateTargetEventRegistration.
 eventFrame:RegisterEvent("ADDON_LOADED")
+eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -809,6 +826,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             resolutionCheckPending = true
             C_Timer.After(0.1, RunPendingResolutionCheck)
         end
+    elseif event == "PLAYER_LOGIN" then
+        self:UnregisterEvent("PLAYER_LOGIN")
+        ApplyControllerSupportAtLogin()
     elseif event == "PLAYER_ENTERING_WORLD" then
         Debug("PLAYER_ENTERING_WORLD. Current resolution: " .. GetCurrentResolution())
         -- Fallback in case EDIT_MODE_LAYOUTS_UPDATED doesn't come.
