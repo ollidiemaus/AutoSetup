@@ -4,7 +4,7 @@ std = "lua51"
 max_line_length = false
 ignore = { "21" }
 -- .lua/, .luarocks/ and .install/ are the toolchains the CI actions install into the workspace.
-exclude_files = { ".git/", ".release/", ".lua/", ".luarocks/", ".install/" }
+exclude_files = { ".git/", ".claude/", ".release/", ".lua/", ".luarocks/", ".install/" }
 
 -- Globals the addon defines; the two AutoSetup_ functions are called from the options XML.
 globals = {
