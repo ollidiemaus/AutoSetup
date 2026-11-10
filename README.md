@@ -54,7 +54,8 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
 - **Native controller support per profile (WoW Forever only)**
   - Optional flag marking whether a profile expects WoW Forever's built-in native controller support to be on or off (e.g. on for a Steam Deck/couch profile, off for a mouse-and-keyboard profile).
   - This setting doesn't exist on any other flavor, so the checkbox is hidden entirely unless AutoSetup detects it's running on Forever.
-  - The underlying setting is a protected CVar that Blizzard only allows addons to change during the initial evaluation right after login/reload, so switching it takes **two reloads**: the first login/reload where AutoSetup detects the mismatch applies the CVar and asks you to reload again; the second reload is where it actually takes functional effect. AutoSetup shows the same "reload required" popup used for AddOn changes at each step (with wording specific to which step you're on), and leaves Edit Mode untouched the whole time until the mode switch is fully confirmed.
+  - AutoSetup switches it at login/reload and then **reloads the UI once by itself**, which is when the switch takes effect (the game's own checkbox reloads too). The game logs an "action blocked" error for AutoSetup when this happens; the switch works regardless.
+  - The game doesn't let addons change it later in a session (e.g. right when you switch resolutions), and AutoSetup never reloads by itself in combat or twice in a row. In those cases it shows the "reload required" popup instead. Edit Mode is left untouched until the setting matches the profile.
 
 - **Non‑intrusive behavior**
   - Never changes your actual resolution; it only **observes** it.
@@ -99,7 +100,7 @@ In the options panel:
    - On and Off apply whenever the profile is applied. In combat the change waits until combat ends.
 7. **Enable native controller support** (only shown on WoW Forever)
    - Check this if the profile expects WoW Forever's native controller support to be on (leave unchecked for keyboard/mouse profiles).
-   - Takes two reloads to fully apply: AutoSetup sets the CVar as soon as it can (on the next login/reload after a mismatch is detected) and asks you to reload once more for it to actually take effect. Blizzard also blocks addons from changing this setting live mid-session (e.g. right when you switch resolutions), so in that case AutoSetup shows the reload popup first to get that initial reload going. Edit Mode is left alone the whole time until the mode switch is fully confirmed.
+   - AutoSetup switches it at the next login/reload and reloads the UI once by itself to finish. Mid-session (e.g. right after you save the profile or switch resolutions) it shows the reload popup first. Edit Mode is left alone until the setting matches the profile.
 8. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
@@ -133,7 +134,7 @@ Saved profiles are listed in the scrollable list at the bottom:
   - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed. Scale, addons, features and the Damage Meter are left alone.
   - While Edit Mode is open it doesn't switch layouts; it catches up when you close Edit Mode.
 
-If AutoSetup detects that addons or native controller support need to change for a profile, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
+If AutoSetup detects that addons need to change for a profile, or that native controller support needs a reload it won't do by itself, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
 
 ---
 

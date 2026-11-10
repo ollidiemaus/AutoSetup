@@ -13,15 +13,21 @@ local debugLog = {}                -- rolling in‑memory log for /autosetup deb
 local lastResolution = nil         -- last resolution string we evaluated
 local initDone = false             -- the one verbose evaluation per login/reload has run (see RunInitialEvaluation)
 local applyAfterCombat = false     -- the last full evaluation ran in combat; run it again once combat ends
-local lastAppliedControllerSupport = nil -- last native-controller-support state we actually applied
-local controllerSupportChangedThisSession = false -- true once our SetCVar took this session; Edit Mode won't offer the new mode's layouts until the next reload
+local lastAppliedControllerSupport = nil -- the controller support state the last evaluation saw the profile want; a mismatch is reported once per state
+local controllerSupportChangedThisSession = false -- our SetCVar took this session; Edit Mode won't offer the new mode's layouts until the next reload
 local controllerSupportSetAtLogin = false -- our SetCVar took at PLAYER_LOGIN; the initial evaluation asks for the follow-up reload
 local controllerSupportBlocked = false -- the game refused our SetCVar at PLAYER_LOGIN
+local controllerAutoReloadAllowed = false -- set at ADDON_LOADED; false right after an automatic reload (TakeControllerReloadMark)
 
 -- Native controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
 -- toggling the setting in Forever's Options menu -- the only line that changed was
 -- InputDeviceInterfaceStyle going from unset (default 0) to "1".
 local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
+
+-- CVars are written through the C API, not the game's Lua SetCVar wrapper around it: a Blizzard Lua
+-- function called from addon code runs tainted.
+local GetCVarValue = (C_CVar and C_CVar.GetCVar) or GetCVar
+local SetCVarValue = (C_CVar and C_CVar.SetCVar) or SetCVar
 
 -- Native controller support needs the game's controller interface: on Forever, not on Retail.
 -- Checked by capability, not flavor, so a client that adds it later gets the option too. The
@@ -160,6 +166,22 @@ local function LoadDB()
         Print("Couldn't read the saved profiles. They are kept as they were, "
             .. "and profile changes made this session won't be saved.")
     end
+end
+
+-- AutoSetupDB.reloadedForController marks that the last session ended with the automatic reload
+-- after a controller support change (RunInitialEvaluation), so a change that doesn't survive the
+-- reload can't reload forever: the session after one never reloads by itself. Optional, absent
+-- means false, so no DB_VERSION bump. Only saved data of this version carries it; without it
+-- (a newer file, unreadable data) there is no automatic reload at all.
+local function TakeControllerReloadMark()
+    if type(AutoSetupDB) ~= "table" or AutoSetupDB.version ~= DB_VERSION then return true end
+    local marked = AutoSetupDB.reloadedForController == true
+    AutoSetupDB.reloadedForController = nil
+    return marked
+end
+
+local function SetControllerReloadMark()
+    AutoSetupDB.reloadedForController = true
 end
 
 local function GetProfileForResolution(resolution)
@@ -520,8 +542,8 @@ local function ApplyScale(profile, verbose)
 
     if math.abs(currentScale - targetScale) > 0.001 then
         if verbose then Debug("Setting UI Scale to " .. tostring(profile.scale)) end
-        SetCVar("useUiScale", "1")
-        SetCVar("uiScale", tostring(profile.scale))
+        SetCVarValue("useUiScale", "1")
+        SetCVarValue("uiScale", tostring(profile.scale))
     elseif verbose then
         Debug("UI Scale already matches profile (" .. tostring(currentScale) .. ")")
     end
@@ -530,8 +552,6 @@ end
 -- The game's real on/off for the Damage Meter; its frame listens for the CVar, so no reload is needed.
 -- Edit Mode's ShowDamageMeter setting only controls the preview and is never read or written here.
 local DAMAGE_METER_CVAR = "damageMeterEnabled"
-local GetCVarValue = (C_CVar and C_CVar.GetCVar) or GetCVar
-local SetCVarValue = (C_CVar and C_CVar.SetCVar) or SetCVar
 
 -- nil (Leave alone) changes nothing, and nothing restores an earlier value. Only a client without
 -- C_DamageMeter is skipped: IsDamageMeterAvailable() can change by character and the game's frame
@@ -553,22 +573,24 @@ local function ApplyDamageMeter(profile, verbose)
 end
 
 -- True when Edit Mode should be left alone because the input mode (keyboard/mouse vs. controller)
--- isn't confirmed settled yet -- either we changed it ourselves this session (Edit Mode won't offer
--- the new mode's layouts until the next reload), or we're blocked from changing it live and it
--- still doesn't match the profile.
+-- isn't settled: either we changed controller support this session (Edit Mode won't offer the
+-- new mode's layouts until the next reload), or it doesn't match the profile, whose layouts belong
+-- to the other mode.
 local function IsInputModeUnsettled(profile)
     if not AutoSetup.hasControllerInterface then return false end
     local desired = profile.nativeControllerSupport or false
     return controllerSupportChangedThisSession or desired ~= (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
 end
 
--- InputDeviceInterfaceStyle is a protected CVar, and this is the only place that sets it. Confirmed
--- in-game: an addon's SetCVar on it from EDIT_MODE_LAYOUTS_UPDATED or later in a session can be
--- blocked with ADDON_ACTION_BLOCKED, and it's not known why, so nothing after PLAYER_LOGIN tries.
--- This can pass without acting and the value still differ by the initial evaluation (cause unknown:
--- it may arrive after PLAYER_LOGIN on a first login, or the attempt was skipped), so
--- ApplyControllerSupport asks for a reload, which comes back through here. Read it back: a blocked
--- SetCVar doesn't stop the caller.
+-- InputDeviceInterfaceStyle is a protected CVar, and this is the only place that sets it. The game
+-- answers an addon's SetCVar on it with ADDON_ACTION_BLOCKED, at PLAYER_LOGIN too (taint.log,
+-- 2026-11-10: the addon's own call, nothing tainted before it; seen with the controller interface on
+-- and a profile that wants it off). The call is made anyway, on purpose: the value still changes
+-- and the switch works after a reload, which is worth the logged error. Likely why: the game's own
+-- checkbox reloads the UI when toggled, with no reload in its Lua, so the client does that inside
+-- the CVar change and refuses only that part to an addon (not confirmed).
+-- Later in a session nothing tries: seen blocked there with the value left as it was. Read it back
+-- to tell the two apart.
 local function ApplyControllerSupportAtLogin()
     if not AutoSetup.hasControllerInterface or InCombatLockdown() then return end
     local res = GetCurrentResolution()
@@ -582,7 +604,7 @@ local function ApplyControllerSupportAtLogin()
     if desired == (current == "1") then return end
 
     Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
-    SetCVar(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
+    SetCVarValue(CONTROLLER_SUPPORT_CVAR, desired and "1" or "0")
     if (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1") == desired then
         controllerSupportChangedThisSession = true
         controllerSupportSetAtLogin = true
@@ -594,7 +616,7 @@ end
 
 -- Reports the result; only ApplyControllerSupportAtLogin changes it. Setting the CVar alone doesn't
 -- make it take functional effect -- confirmed in-game that a reload is still needed afterwards.
-local function ApplyControllerSupport(profile)
+local function ReportControllerSupport(profile)
     if not profile or not AutoSetup.hasControllerInterface then return end
 
     local desired = profile.nativeControllerSupport or false
@@ -690,7 +712,7 @@ end
 
 -- Listen to the target events only while a target layout applies, so without one AutoSetup does
 -- next to nothing during play. Recomputed on every full evaluation, after CacheProfileLayouts and
--- ApplyControllerSupport (an unsettled input mode leaves Edit Mode alone until the next reload).
+-- ReportControllerSupport (an unsettled input mode leaves Edit Mode alone).
 local function UpdateTargetEventRegistration()
     local wanted = targetLayoutClean ~= nil and not IsInputModeUnsettled(layoutProfile)
     if wanted == targetEventsRegistered then return end
@@ -727,7 +749,7 @@ local function EvaluateProfileState(verbose)
     end
 
     ApplyScale(profile, verbose)
-    ApplyControllerSupport(profile)
+    ReportControllerSupport(profile)
     UpdateTargetEventRegistration()
     UpdateLayout(verbose)
     ApplyAddonSet(profile, verbose)
@@ -745,6 +767,14 @@ local function RunInitialEvaluation()
     if initDone then return end
     initDone = true
     eventFrame:UnregisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    -- Controller support changed at login takes effect with a reload, like the game's own checkbox
+    -- does it. Reload now, before applying a profile the reload would apply again. In combat, or
+    -- right after such a reload, the evaluation shows the reload popup for it.
+    if controllerSupportSetAtLogin and controllerAutoReloadAllowed and not InCombatLockdown() then
+        SetControllerReloadMark()
+        AutoSetup.ExecuteReload()
+        return
+    end
     EvaluateProfileState(true)
 end
 
@@ -814,6 +844,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
         if arg1 ~= addonName then return end
         self:UnregisterEvent("ADDON_LOADED")
         LoadDB()
+        controllerAutoReloadAllowed = not TakeControllerReloadMark()
         Debug("AutoSetup loaded.")
 
         -- Safety net: DISPLAY_SIZE_CHANGED/UI_SCALE_CHANGED catch most changes, but some

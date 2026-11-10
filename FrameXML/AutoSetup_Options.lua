@@ -47,29 +47,14 @@ local function BuildAddonsString(...)
     return table.concat(parts, ", ")
 end
 
-local function ASP(msg)
-    if AutoSetup and AutoSetup.Print then
-        AutoSetup.Print(msg)
-    else
-        print("AutoSetup: " .. tostring(msg))
-    end
-end
+local ASP = AutoSetup.Print
 
 -- Find the installed addon matching a user-entered name or title (case-insensitive).
 -- Returns its folder name, or nil.
 local function ResolveAddonName(userName)
     local lowerUser = string.lower(userName)
-    local getCount = AutoSetup.GetAddOnCount
-    local getInfo = AutoSetup.GetAddOnNameAndTitle
-    local numAddOns = getCount and getCount() or ((GetNumAddOns and GetNumAddOns()) or 0)
-
-    for i = 1, numAddOns do
-        local name, title
-        if getInfo then
-            name, title = getInfo(i)
-        else
-            name, title = GetAddOnInfo(i)
-        end
+    for i = 1, AutoSetup.GetAddOnCount() do
+        local name, title = AutoSetup.GetAddOnNameAndTitle(i)
         if name then
             local lowerTitle = title and string.lower(title) or nil
             if lowerUser == string.lower(name) or (lowerTitle and lowerUser == lowerTitle) then
@@ -387,14 +372,8 @@ local function RefreshProfileList(panel)
 end
 
 function AutoSetup_OpenOptionsPanel()
-    if Settings and Settings.OpenToCategory and AutoSetup.optionsCategory then
+    if AutoSetup.optionsCategory then
         Settings.OpenToCategory(AutoSetup.optionsCategory:GetID())
-        return
-    end
-
-    if InterfaceOptionsFrame then
-        InterfaceOptionsFrame_OpenToCategory("AutoSetup")
-        InterfaceOptionsFrame_OpenToCategory("AutoSetup")
     end
 end
 
@@ -487,7 +466,8 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     if panel.saveButton then
         panel.saveButton:SetScript("OnClick", function()
             local name = panel.nameInput:GetText() or ""
-            local res = panel.resInput:GetText() or ""
+            -- Profiles are looked up by the exact "WIDTHxHEIGHT" key GetCurrentResolution builds.
+            local res = (panel.resInput:GetText() or ""):gsub("%s+", ""):lower()
             local baseLayout = panel.baseLayoutInput:GetText() or ""
             local targetLayout = panel.targetLayoutInput:GetText() or ""
             local scale = panel.scaleCheck:GetChecked()
@@ -502,6 +482,11 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
                 ASP("Please enter a resolution.")
                 return
             end
+            if not res:match("^%d+x%d+$") then
+                ASP("Please enter the resolution as WIDTHxHEIGHT, e.g. 1920x1080.")
+                return
+            end
+            panel.resInput:SetText(res)
             if baseLayout == "" and not controllerSupport then
                 ASP(AutoSetup.hasControllerInterface
                     and "Please enter a base Edit Mode layout name, or enable native controller support."
@@ -555,13 +540,9 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         panel.scaleSliderText:SetText(string.format("UI Scale: %.2f", panel.scaleSlider:GetValue()))
     end
 
-    if Settings and Settings.RegisterCanvasLayoutCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(panel, "AutoSetup")
-        Settings.RegisterAddOnCategory(category)
-        AutoSetup.optionsCategory = category
-    elseif InterfaceOptions_AddCategory then
-        InterfaceOptions_AddCategory(panel)
-    end
+    local category = Settings.RegisterCanvasLayoutCategory(panel, "AutoSetup")
+    Settings.RegisterAddOnCategory(category)
+    AutoSetup.optionsCategory = category
 
     AutoSetup.optionsPanel = panel
 
