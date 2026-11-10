@@ -22,8 +22,7 @@ read_globals = {
     -- Namespaces
     "C_AddOns", "C_CVar", "C_DamageMeter", "C_EditMode", "C_EventUtils", "C_InputInterfaceStyle", "C_Timer", "C_UI", "Settings", "Enum", "EventRegistry",
     -- Frames and UI (AutoSetupReloadPopup* are named in FrameXML/AutoSetup_ReloadPopup.xml)
-    "CreateFrame", "UIParent", "EditModeManagerFrame", "InterfaceOptionsFrame",
-    "InterfaceOptionsFrame_OpenToCategory", "InterfaceOptions_AddCategory",
+    "CreateFrame", "UIParent", "EditModeManagerFrame",
     "AutoSetupReloadPopup", "AutoSetupReloadPopupMessage",
     -- Addons
     "DisableAddOn", "EnableAddOn", "GetAddOnInfo", "GetNumAddOns",
