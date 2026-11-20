@@ -1,6 +1,7 @@
 -- AutoSetup
 -- Per‑resolution profiles that:
---   * apply a chosen Edit Mode layout (and optional combat/target layout)
+--   * apply a chosen Edit Mode layout (and optional combat/target layout) for each input mode
+--   * optionally set controller support at login
 --   * optionally set a UI scale
 --   * enable/disable a set of addons
 --   * optionally turn the game's Damage Meter on or off
@@ -19,7 +20,7 @@ local controllerSupportSetAtLogin = false -- our SetCVar took at PLAYER_LOGIN; t
 local controllerSupportBlocked = false -- the game refused our SetCVar at PLAYER_LOGIN
 local controllerAutoReloadAllowed = false -- set at ADDON_LOADED; false right after an automatic reload (TakeControllerReloadMark)
 
--- Native controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
+-- Controller support (WoW Forever): confirmed by diffing config-cache.wtf before/after
 -- toggling the setting in Forever's Options menu -- the only line that changed was
 -- InputDeviceInterfaceStyle going from unset (default 0) to "1".
 local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
@@ -29,12 +30,26 @@ local CONTROLLER_SUPPORT_CVAR = "InputDeviceInterfaceStyle"
 local GetCVarValue = (C_CVar and C_CVar.GetCVar) or GetCVar
 local SetCVarValue = (C_CVar and C_CVar.SetCVar) or SetCVar
 
--- Native controller support needs the game's controller interface: on Forever, not on Retail.
+-- Controller support needs the game's controller interface: on Forever, not on Retail.
 -- Checked by capability, not flavor, so a client that adds it later gets the option too. The
 -- C_InputInterfaceStyle namespace alone isn't enough:
 -- Retail 12.1.7 ships it without the interface. Like Blizzard's InputUtil.IsGamepadUISupported(),
 -- also require the CVar to exist.
 AutoSetup.hasControllerInterface = C_InputInterfaceStyle ~= nil and GetCVar(CONTROLLER_SUPPORT_CVAR) ~= nil
+
+-- Enum.InputDeviceInterfaceType: the input mode, also the style an Edit Mode layout belongs to
+-- (layoutInfo.interfaceStyle, nil for keyboard).
+local INTERFACE_STYLE_GAMEPAD = Enum.InputDeviceInterfaceType and Enum.InputDeviceInterfaceType.Gamepad or 1
+
+-- The input mode the game is in right now, read live: it switches without a reload when the player
+-- toggles the controller interface. Clients without the controller interface are always keyboard.
+local function IsControllerInputMode()
+    return AutoSetup.hasControllerInterface
+        and C_InputInterfaceStyle.GetCurrentStyle() == INTERFACE_STYLE_GAMEPAD
+end
+
+AutoSetup.IsControllerInputMode = IsControllerInputMode
+AutoSetup.INTERFACE_STYLE_GAMEPAD = INTERFACE_STYLE_GAMEPAD
 
 -------------------------------------------------------------------------------
 -- Utility helpers
@@ -84,7 +99,7 @@ AutoSetup.GetCurrentResolution = GetCurrentResolution
 
 -- AutoSetupDB = { version = DB_VERSION, profiles = { ["WIDTHxHEIGHT"] = profile } }. The unversioned
 -- shape before it, with the profiles at the top level, is version 1.
-local DB_VERSION = 2
+local DB_VERSION = 3
 
 -- The table the profile database functions read and write: AutoSetupDB.profiles once LoadDB has run.
 -- When the saved data can't be used (a failed migration), it stays a table that lives for this session
@@ -120,6 +135,24 @@ local Migrations = {
             end
         end
         return { profiles = migrated }
+    end,
+
+    -- 2 -> 3: the base and target layouts become the keyboard layouts (the controller ones start
+    -- empty), and controller support turns three-way. Saved profiles keep what they did: true
+    -- stays On, false or no value becomes an explicit Off, because from now on no value means
+    -- Leave alone.
+    [2] = function(data)
+        for _, profile in pairs(data.profiles) do
+            if type(profile) == "table" then
+                profile.keyboardLayoutBase = profile.editLayoutBase
+                profile.keyboardLayoutTarget = profile.editLayoutTarget
+                profile.editLayoutBase = nil
+                profile.editLayoutTarget = nil
+                profile.controllerSupport = profile.nativeControllerSupport == true
+                profile.nativeControllerSupport = nil
+            end
+        end
+        return data
     end,
 }
 
@@ -192,10 +225,13 @@ end
 local function EnsureProfile(resolution)
     profiles[resolution] = profiles[resolution] or {
         name = resolution,
-        editLayoutBase = nil,
-        editLayoutTarget = nil,
+        -- Base and Target layout per input mode; nil leaves Edit Mode alone (no Target: Base stays)
+        keyboardLayoutBase = nil,
+        keyboardLayoutTarget = nil,
+        controllerLayoutBase = nil,
+        controllerLayoutTarget = nil,
         scale = nil,
-        nativeControllerSupport = false,
+        controllerSupport = nil, -- true = On, false = Off, nil = Leave alone (set only at PLAYER_LOGIN)
         addonSet = nil, -- [addonName] = true/false
         featureSet = nil, -- ["Addon:feature"] = true/false
         damageMeter = nil, -- true = On, false = Off, nil = Leave alone
@@ -274,6 +310,9 @@ local layoutRequest = 0
 -- every full evaluation (CacheProfileLayouts), which keeps it to the layouts of this session.
 local cleanedLayoutNames = {}
 
+-- Cleaned layout names already logged as belonging to the other input mode; wiped with the above.
+local reportedOtherModeLayouts = {}
+
 local function CleanLayoutListName(name)
     if not name then return "" end
     local clean = cleanedLayoutNames[name]
@@ -303,23 +342,37 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
     if manager and manager:IsEditModeActive() then return end
 
     local ready = manager and manager:IsInitialized()
-    local foundIndex, foundName
+    local foundIndex, foundName, otherModeName
     if ready then
         local activeInfo = manager:GetActiveLayoutInfo()
         if activeInfo and CleanLayoutListName(activeInfo.layoutName) == targetNameClean then
             return
         end
 
+        -- The game selects a layout only in its own input mode, so a layout of the other mode
+        -- with the wanted name doesn't count.
+        local controllerMode = IsControllerInputMode()
         for i, layoutInfo in ipairs(manager:GetLayouts()) do
             if CleanLayoutListName(layoutInfo.layoutName) == targetNameClean then
-                foundIndex = i
-                foundName = layoutInfo.layoutName
-                break
+                if (layoutInfo.interfaceStyle == INTERFACE_STYLE_GAMEPAD) == controllerMode then
+                    foundIndex = i
+                    foundName = layoutInfo.layoutName
+                    break
+                end
+                otherModeName = otherModeName or layoutInfo.layoutName
             end
         end
     end
 
-    if foundIndex then
+    if not foundIndex and otherModeName then
+        -- Once per name and evaluation, so target changes don't fill the log.
+        if not reportedOtherModeLayouts[targetNameClean] then
+            reportedOtherModeLayouts[targetNameClean] = true
+            Debug("Layout '" .. otherModeName .. "' belongs to the " ..
+                (IsControllerInputMode() and "keyboard" or "controller") ..
+                " input mode, not the current one. Edit Mode left alone; pick a layout of this mode in the profile.")
+        end
+    elseif foundIndex then
         -- The manager's list (presets, then saved layouts) uses the API's layout index. Not
         -- manager:SelectLayout, which calls the same API but also prints "layout applied" in chat.
         C_EditMode.SetActiveLayout(foundIndex)
@@ -572,16 +625,6 @@ local function ApplyDamageMeter(profile, verbose)
     Debug("Damage Meter turned " .. (profile.damageMeter and "on" or "off") .. ".")
 end
 
--- True when Edit Mode should be left alone because the input mode (keyboard/mouse vs. controller)
--- isn't settled: either we changed controller support this session (Edit Mode won't offer the
--- new mode's layouts until the next reload), or it doesn't match the profile, whose layouts belong
--- to the other mode.
-local function IsInputModeUnsettled(profile)
-    if not AutoSetup.hasControllerInterface then return false end
-    local desired = profile.nativeControllerSupport or false
-    return controllerSupportChangedThisSession or desired ~= (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
-end
-
 -- InputDeviceInterfaceStyle is a protected CVar, and this is the only place that sets it. The game
 -- answers an addon's SetCVar on it with ADDON_ACTION_BLOCKED, at PLAYER_LOGIN too (taint.log,
 -- 2026-11-10: the addon's own call, nothing tainted before it; seen with the controller interface on
@@ -598,9 +641,10 @@ local function ApplyControllerSupportAtLogin()
     local current = GetCVar(CONTROLLER_SUPPORT_CVAR)
     Debug("PLAYER_LOGIN: " .. res .. ", " .. CONTROLLER_SUPPORT_CVAR .. " = " .. tostring(current) ..
         ", profile: " .. tostring(profile and profile.name))
-    if not profile then return end
+    -- Leave alone (nil) never touches the input mode.
+    if not profile or profile.controllerSupport == nil then return end
 
-    local desired = profile.nativeControllerSupport or false
+    local desired = profile.controllerSupport
     if desired == (current == "1") then return end
 
     Debug("Setting " .. CONTROLLER_SUPPORT_CVAR .. " to " .. (desired and "1" or "0"))
@@ -617,9 +661,9 @@ end
 -- Reports the result; only ApplyControllerSupportAtLogin changes it. Setting the CVar alone doesn't
 -- make it take functional effect -- confirmed in-game that a reload is still needed afterwards.
 local function ReportControllerSupport(profile)
-    if not profile or not AutoSetup.hasControllerInterface then return end
+    if not profile or profile.controllerSupport == nil or not AutoSetup.hasControllerInterface then return end
 
-    local desired = profile.nativeControllerSupport or false
+    local desired = profile.controllerSupport
     local current = (GetCVar(CONTROLLER_SUPPORT_CVAR) == "1")
     local state = desired and "ON" or "OFF"
     local name = profile.name or "this profile"
@@ -629,7 +673,7 @@ local function ReportControllerSupport(profile)
     if desired == current then
         lastAppliedControllerSupport = desired
         if setAtLogin then
-            ShowReloadPopup("controller", "Native controller support was just set to " .. state ..
+            ShowReloadPopup("controller", "Controller support was just set to " .. state ..
                 " for '" .. name .. "'. Reload once more to finish applying it.")
         end
         return
@@ -649,11 +693,13 @@ local function ReportControllerSupport(profile)
     end
 end
 
--- The current profile and its layout names, cleaned, as of the last full evaluation
--- (CacheProfileLayouts), so target and combat events neither look up the profile nor clean names.
+-- The current profile and its layout names, cleaned, for both input modes, as of the last full
+-- evaluation (CacheProfileLayouts), so target, combat and input mode events neither look up the
+-- profile nor clean names. nil is no layout: Edit Mode is left alone (no Target layout: the Base
+-- layout stays).
 local layoutProfile = nil          -- profile for the current resolution, nil without one
-local baseLayoutClean = nil        -- its base layout; nil when Edit Mode is left alone
-local targetLayoutClean = nil      -- its target layout; nil without one or when Edit Mode is left alone
+local keyboardBaseClean, keyboardTargetClean = nil, nil
+local controllerBaseClean, controllerTargetClean = nil, nil
 
 -- Cleaned name, or nil for no layout (empty or blank).
 local function CleanLayoutName(name)
@@ -661,35 +707,47 @@ local function CleanLayoutName(name)
     if clean ~= "" then return clean end
 end
 
--- nil layouts leave Edit Mode alone: native controller support uses its own hidden default layout
--- that isn't selectable from GetLayouts() and can't coexist with a keyboard/mouse layout, so the
--- client manages it. Only relevant on clients with the controller interface -- elsewhere a stale
--- nativeControllerSupport value is ignored.
+-- Controller layouts are user layouts with the controller input style, selectable only in that mode
+-- (Forever's Edit Mode source: EditModeManager.lua's layout dropdown). On a client without the
+-- controller interface they never apply, so a profile synced from Forever keeps its keyboard layouts.
 local function CacheProfileLayouts(profile)
     wipe(cleanedLayoutNames)
+    wipe(reportedOtherModeLayouts)
     layoutProfile = profile
-    if not profile or (AutoSetup.hasControllerInterface and profile.nativeControllerSupport) then
-        baseLayoutClean, targetLayoutClean = nil, nil
-    else
-        baseLayoutClean = CleanLayoutName(profile.editLayoutBase)
-        targetLayoutClean = CleanLayoutName(profile.editLayoutTarget)
+    keyboardBaseClean = profile and CleanLayoutName(profile.keyboardLayoutBase)
+    keyboardTargetClean = profile and CleanLayoutName(profile.keyboardLayoutTarget)
+    controllerBaseClean = profile and CleanLayoutName(profile.controllerLayoutBase)
+    controllerTargetClean = profile and CleanLayoutName(profile.controllerLayoutTarget)
+end
+
+-- The Base and Target layout of the input mode the game is in right now.
+local function GetInputModeLayouts()
+    if IsControllerInputMode() then
+        return controllerBaseClean, controllerTargetClean
     end
+    return keyboardBaseClean, keyboardTargetClean
+end
+
+-- True while our own login switch of the input mode waits for its reload: until then the game is
+-- still in the old mode, so the profile's layouts for neither mode are right.
+local function IsWaitingForInputModeReload()
+    return controllerSupportChangedThisSession
 end
 
 -- The layout the profile wants right now: the target layout in combat or with a (soft) target,
--- the base layout otherwise.
+-- the base layout otherwise, both of the current input mode.
 local function GetDesiredLayout()
-    if targetLayoutClean and (UnitAffectingCombat("player") or UnitExists("target") or UnitExists("softenemy")) then
-        return targetLayoutClean
+    local base, target = GetInputModeLayouts()
+    if target and (UnitAffectingCombat("player") or UnitExists("target") or UnitExists("softenemy")) then
+        return target
     end
-    return baseLayoutClean
+    return base
 end
 
--- Switch to the layout the current profile wants right now. This is all that target and combat
--- changes do, so it stays cheap and leaves scale, addons, features and the Damage Meter alone.
+-- Switch to the layout the current profile wants right now. This is all that target, combat and
+-- input mode changes do, so it stays cheap and leaves scale, addons, features and the Damage Meter alone.
 local function UpdateLayout(verbose)
-    -- Edit Mode won't offer the right layouts until the input mode is settled.
-    if not layoutProfile or IsInputModeUnsettled(layoutProfile) then return end
+    if not layoutProfile or IsWaitingForInputModeReload() then return end
     ApplyEditLayout(GetDesiredLayout(), verbose)
 end
 
@@ -711,13 +769,15 @@ local function SetTargetChangeEvents(registered)
 end
 
 -- Listen to the target events only while a target layout applies, so without one AutoSetup does
--- next to nothing during play. Recomputed on every full evaluation, after CacheProfileLayouts and
--- ReportControllerSupport (an unsettled input mode leaves Edit Mode alone).
+-- next to nothing during play. Recomputed on every full evaluation, after CacheProfileLayouts, and
+-- on an input mode change (the other mode may have no target layout, or one).
 local function UpdateTargetEventRegistration()
-    local wanted = targetLayoutClean ~= nil and not IsInputModeUnsettled(layoutProfile)
+    local _, target = GetInputModeLayouts()
+    local wanted = target ~= nil and not IsWaitingForInputModeReload()
     if wanted == targetEventsRegistered then return end
     targetEventsRegistered = wanted
-    SetTargetChangeEvents(wanted)
+    -- In a fight they stay off until combat ends, which registers them again (PLAYER_REGEN_ENABLED).
+    SetTargetChangeEvents(wanted and not InCombatLockdown())
     if wanted then
         eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     else
@@ -791,7 +851,8 @@ local function UpdateCurrentLayout()
 end
 
 -- The player switched the controller interface in the game's options, which works without a reload.
--- That can settle the input mode (or unsettle it), and only a full evaluation would notice otherwise.
+-- Only the layouts follow the input mode: switch to the new mode's ones (in combat, once it ends,
+-- like any layout update). No full evaluation, so nothing that needs a reload is touched.
 local function OnInputModeChanged()
     if not initDone then return end
     UpdateTargetEventRegistration()

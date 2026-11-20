@@ -122,25 +122,16 @@ local function ValidateFeatures(features)
     end
 end
 
--- Blizzard's own layout dropdown hides the presets of the other interface (keyboard and mouse or
--- controller) too.
-local function IsOtherInterfacePreset(layoutInfo)
-    if layoutInfo.layoutType ~= Enum.EditModeLayoutType.Preset or layoutInfo.interfaceStyle == nil then
-        return false
-    end
-    local style = C_InputInterfaceStyle and C_InputInterfaceStyle.GetCurrentStyle
-        and C_InputInterfaceStyle.GetCurrentStyle()
-    return style ~= nil and style ~= layoutInfo.interfaceStyle
-end
-
--- The names of the layouts a profile can use: the same list ApplyEditLayoutInternal searches, so
--- presets are included (C_EditMode.GetLayouts has only the saved ones).
-local function GetLayoutNames()
+-- The names of the user's layouts for one input mode (controller true or false). The game selects
+-- a layout only in its own mode (interfaceStyle, nil for keyboard), so the other mode's layouts
+-- aren't offered; the presets aren't either.
+local function GetLayoutNames(controller)
     local names = {}
     local manager = EditModeManagerFrame
     if manager and manager:IsInitialized() then
         for _, layoutInfo in ipairs(manager:GetLayouts()) do
-            if layoutInfo.layoutName and not IsOtherInterfacePreset(layoutInfo) then
+            if layoutInfo.layoutName and layoutInfo.layoutType ~= Enum.EditModeLayoutType.Preset
+                and (layoutInfo.interfaceStyle == AutoSetup.INTERFACE_STYLE_GAMEPAD) == controller then
                 table.insert(names, layoutInfo.layoutName)
             end
         end
@@ -159,7 +150,7 @@ local function HideLayoutPopup()
     end
 end
 
-local function ShowLayoutPopup(anchorButton, targetEditBox)
+local function ShowLayoutPopup(anchorButton, targetEditBox, controller)
     if not targetEditBox then return end
 
     -- Toggle behavior: clicking the same button again hides the popup
@@ -205,9 +196,10 @@ local function ShowLayoutPopup(anchorButton, targetEditBox)
         btn:Hide()
     end
 
-    local layouts = GetLayoutNames()
+    local layouts = GetLayoutNames(controller)
     if #layouts == 0 then
-        ASP("No Edit Mode layouts found. Open Edit Mode once and save a layout.")
+        ASP(controller and "No controller Edit Mode layouts found. Open Edit Mode in the controller interface and save a layout."
+            or "No Edit Mode layouts found. Open Edit Mode once and save a layout.")
     end
 
     local y = 0
@@ -237,6 +229,70 @@ local function SetDamageMeterState(panel, state)
     panel.damageMeterState = state
     local stateText = state == nil and "Leave alone" or state and "On" or "Off"
     panel.damageMeterButton:SetText("Damage Meter: " .. stateText)
+end
+
+-- The four layout pickers: the profile field each one edits and the input mode it belongs to.
+local LAYOUT_PICKERS = {
+    { field = "keyboardLayoutBase", input = "KeyboardBaseLayoutInput", controller = false },
+    { field = "keyboardLayoutTarget", input = "KeyboardTargetLayoutInput", controller = false },
+    { field = "controllerLayoutBase", input = "ControllerBaseLayoutInput", controller = true },
+    { field = "controllerLayoutTarget", input = "ControllerTargetLayoutInput", controller = true },
+}
+
+-- Which input modes' layouts a profile with this Controller support can use: both for Leave alone,
+-- the one it switches to for On or Off. Without the controller interface, keyboard only.
+local function ShownInputModes(controllerSupport)
+    if not AutoSetup.hasControllerInterface then return true, false end
+    return controllerSupport ~= true, controllerSupport ~= false
+end
+
+-- Show the pickers of the shown input modes, stacked from the top so none leaves a gap. The popup
+-- may belong to a picker that goes, so it closes.
+local function UpdateLayoutPickers(panel)
+    HideLayoutPopup()
+    local keyboard, controller = ShownInputModes(panel.controllerSupportState)
+    local y = -150
+    for _, picker in ipairs(panel.layoutPickers) do
+        local shown = keyboard
+        if picker.controller then shown = controller end
+        picker.input:SetShown(shown)
+        if shown then
+            picker.input:ClearAllPoints()
+            picker.input:SetPoint("TOPLEFT", 20, y)
+            y = y - 50
+        end
+    end
+end
+
+-- The panel holds the form's state until save: true = On, false = Off, nil = Leave alone. The value
+-- is kept without the controller interface too (button hidden), so a profile synced from a client
+-- with it keeps its setting.
+local function SetControllerSupportState(panel, state)
+    panel.controllerSupportState = state
+    local stateText = state == nil and "Leave alone" or state and "On" or "Off"
+    panel.controllerSupportButton:SetText("Controller support: " .. stateText)
+    UpdateLayoutPickers(panel)
+end
+
+-- "base -> target" for the profile list; "none" for no Base layout.
+local function LayoutPairText(base, target)
+    return (base or "none") .. (target and (" -> " .. target) or "")
+end
+
+-- The layouts that apply in each input mode the profile can be in.
+local function ProfileLayoutsText(data)
+    if not AutoSetup.hasControllerInterface then
+        return "Layout: " .. LayoutPairText(data.keyboardLayoutBase, data.keyboardLayoutTarget)
+    end
+    local keyboard, controller = ShownInputModes(data.controllerSupport)
+    local parts = {}
+    if keyboard then
+        table.insert(parts, "Keyboard: " .. LayoutPairText(data.keyboardLayoutBase, data.keyboardLayoutTarget))
+    end
+    if controller then
+        table.insert(parts, "Controller: " .. LayoutPairText(data.controllerLayoutBase, data.controllerLayoutTarget))
+    end
+    return table.concat(parts, "  |  ")
 end
 
 -- nil leaves the UI scale alone; the slider only matters with the box ticked.
@@ -298,21 +354,20 @@ local function RefreshProfileList(panel)
         end
 
         local displayName = data.name or "Profile"
-        local targetText = data.editLayoutTarget and (" -> " .. data.editLayoutTarget) or ""
         local hasAddons = (data.addonSet or data.featureSet) and "|cff00ff00Addons|r" or "|cffff0000No Addons|r"
         local scaleText = data.scale and tostring(data.scale) or "unchanged"
-        local controllerText = (AutoSetup.hasControllerInterface and data.nativeControllerSupport)
-            and " | |cff00ff00Controller|r" or ""
+        local controllerText = ""
+        if AutoSetup.hasControllerInterface and data.controllerSupport ~= nil then
+            controllerText = data.controllerSupport and " | |cff00ff00Controller On|r" or " | |cffff0000Controller Off|r"
+        end
         local damageMeterText = ""
         if data.damageMeter ~= nil then
             damageMeterText = data.damageMeter and " | |cff00ff00Meter On|r" or " | |cffff0000Meter Off|r"
         end
 
         row.text:SetText(displayName)
-        row.subtext:SetText(res ..
-            "\nBase: " ..
-            (data.editLayoutBase or "?") ..
-            targetText .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText .. damageMeterText)
+        row.subtext:SetText(res .. " | Scale: " .. scaleText .. " | " .. hasAddons .. controllerText ..
+            damageMeterText .. "\n" .. ProfileLayoutsText(data))
 
         row.delBtn:SetScript("OnClick", function()
             AutoSetup.DeleteProfile(res)
@@ -326,10 +381,11 @@ local function RefreshProfileList(panel)
             if not panel.nameInput then return end
             panel.nameInput:SetText(data.name or "")
             panel.resInput:SetText(res)
-            panel.baseLayoutInput:SetText(data.editLayoutBase or "")
-            panel.targetLayoutInput:SetText(data.editLayoutTarget or "")
+            for _, picker in ipairs(panel.layoutPickers) do
+                picker.input:SetText(data[picker.field] or "")
+            end
             SetScaleOverride(panel, data.scale)
-            if panel.controllerCheck then panel.controllerCheck:SetChecked(data.nativeControllerSupport or false) end
+            SetControllerSupportState(panel, data.controllerSupport)
             SetDamageMeterState(panel, data.damageMeter)
             panel.addonsInput:SetText(BuildAddonsString(data.addonSet or {}, data.featureSet or {}))
         end)
@@ -385,20 +441,15 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
     panel.titleText           = _G[baseName .. "TitleText"]
     panel.nameInput           = _G[baseName .. "NameInput"]
     panel.resInput            = _G[baseName .. "ResInput"]
-    panel.baseLayoutInput     = _G[baseName .. "BaseLayoutInput"]
-    panel.baseLayoutLabel     = _G[baseName .. "BaseLayoutLabel"]
-    panel.targetLayoutInput   = _G[baseName .. "TargetLayoutInput"]
     panel.scaleCheck          = _G[baseName .. "ScaleCheck"]
     panel.scaleSlider         = _G[baseName .. "ScaleSlider"]
     panel.scaleSliderText     = _G[baseName .. "ScaleSliderText"] -- the slider template's $parentText
-    panel.controllerCheck     = _G[baseName .. "ControllerCheck"]
+    panel.controllerSupportButton = _G[baseName .. "ControllerSupportButton"]
     panel.damageMeterButton   = _G[baseName .. "DamageMeterButton"]
     panel.addonsInput         = _G[baseName .. "AddonsInput"]
     panel.saveButton          = _G[baseName .. "SaveButton"]
     panel.clearButton         = _G[baseName .. "ClearButton"]
     panel.useCurrentResButton = _G[baseName .. "UseCurrentResButton"]
-    panel.baseLayoutButton    = _G[baseName .. "BaseLayoutButton"]
-    panel.targetLayoutButton  = _G[baseName .. "TargetLayoutButton"]
     panel.scrollFrame         = _G[baseName .. "ScrollFrame"]
     panel.listContent         = _G[baseName .. "ScrollFrameListContent"]
 
@@ -408,27 +459,44 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
 
     if panel.nameInput then panel.nameInput:SetAutoFocus(false) end
     if panel.resInput then panel.resInput:SetAutoFocus(false) end
-    if panel.baseLayoutInput then panel.baseLayoutInput:SetAutoFocus(false) end
-    if panel.targetLayoutInput then panel.targetLayoutInput:SetAutoFocus(false) end
     if panel.addonsInput then panel.addonsInput:SetAutoFocus(false) end
 
-    -- Native controller support needs the game's controller interface; hide the option entirely
-    -- on clients without it rather than showing a checkbox for a setting they don't have.
-    if panel.controllerCheck then
-        if AutoSetup.hasControllerInterface then
-            if panel.controllerCheck.Text then
-                panel.controllerCheck.Text:SetText("Enable native controller support")
-            end
-        else
-            panel.controllerCheck:Hide()
-        end
+    -- Without the controller interface there is one input mode, so the labels don't name it.
+    local labels = AutoSetup.hasControllerInterface and {
+        keyboardLayoutBase = "Keyboard Base Layout",
+        keyboardLayoutTarget = "Keyboard Target Layout (optional, combat/target)",
+        controllerLayoutBase = "Controller Base Layout (blank = leave Edit Mode alone)",
+        controllerLayoutTarget = "Controller Target Layout (optional, combat/target)",
+    } or {
+        keyboardLayoutBase = "Base Edit Mode Layout Name",
+        keyboardLayoutTarget = "Target Layout (optional, used in combat/with target)",
+    }
+    panel.layoutPickers = {}
+    for _, info in ipairs(LAYOUT_PICKERS) do
+        local input = _G[baseName .. info.input]
+        local picker = { field = info.field, controller = info.controller, input = input }
+        table.insert(panel.layoutPickers, picker)
+        input.Label:SetText(labels[info.field] or "")
+        input.PickButton:SetScript("OnClick", function()
+            ShowLayoutPopup(input.PickButton, input, info.controller)
+        end)
     end
 
-    if panel.baseLayoutLabel then
-        panel.baseLayoutLabel:SetText(AutoSetup.hasControllerInterface
-            and "Base Edit Mode Layout Name (blank = controller default)"
-            or "Base Edit Mode Layout Name")
-    end
+    -- Controller support needs the game's controller interface; without it the button is hidden
+    -- and only the keyboard pickers show. Like the Damage Meter, a button that steps through the
+    -- states rather than a dropdown (see below).
+    panel.controllerSupportButton:SetShown(AutoSetup.hasControllerInterface)
+    SetControllerSupportState(panel, nil)
+    panel.controllerSupportButton:SetScript("OnClick", function()
+        local state = panel.controllerSupportState
+        if state == nil then
+            SetControllerSupportState(panel, true)
+        elseif state then
+            SetControllerSupportState(panel, false)
+        else
+            SetControllerSupportState(panel, nil)
+        end
+    end)
 
     -- A button that steps through the states, not a dropdown: opening a dropdown menu in the
     -- controller interface and closing the settings has frozen the game on WoW Forever.
@@ -451,31 +519,21 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         end)
     end
 
-    if panel.baseLayoutButton then
-        panel.baseLayoutButton:SetScript("OnClick", function()
-            ShowLayoutPopup(panel.baseLayoutButton, panel.baseLayoutInput)
-        end)
-    end
-
-    if panel.targetLayoutButton then
-        panel.targetLayoutButton:SetScript("OnClick", function()
-            ShowLayoutPopup(panel.targetLayoutButton, panel.targetLayoutInput)
-        end)
-    end
-
     if panel.saveButton then
         panel.saveButton:SetScript("OnClick", function()
             local name = panel.nameInput:GetText() or ""
             -- Profiles are looked up by the exact "WIDTHxHEIGHT" key GetCurrentResolution builds.
             local res = (panel.resInput:GetText() or ""):gsub("%s+", ""):lower()
-            local baseLayout = panel.baseLayoutInput:GetText() or ""
-            local targetLayout = panel.targetLayoutInput:GetText() or ""
+            -- Hidden pickers keep what Edit put in them, so the other input mode's layouts survive
+            -- a profile set to On or Off, and a client without the controller interface.
+            local layouts = {}
+            for _, picker in ipairs(panel.layoutPickers) do
+                local text = picker.input:GetText() or ""
+                layouts[picker.field] = (text ~= "" and text) or nil
+            end
             local scale = panel.scaleCheck:GetChecked()
                 and tonumber(string.format("%.2f", panel.scaleSlider:GetValue())) or nil
-            -- Without the controller interface the checkbox is hidden but Edit still sets it from the
-            -- stored value; store false so a stale true neither survives the save nor allows a blank base.
-            local controllerSupport = AutoSetup.hasControllerInterface and panel.controllerCheck
-                and panel.controllerCheck:GetChecked() and true or false
+            local controllerSupport = panel.controllerSupportState
             local addonsStr = panel.addonsInput:GetText() or ""
 
             if res == "" then
@@ -487,19 +545,27 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
                 return
             end
             panel.resInput:SetText(res)
-            if baseLayout == "" and not controllerSupport then
+            local keyboard, controller = ShownInputModes(controllerSupport)
+            -- Keyboard only (Off, or no controller interface): a Base layout is needed, as before
+            -- the input modes. With controller layouts shown, a blank Base leaves Edit Mode alone.
+            if keyboard and not controller and not layouts.keyboardLayoutBase then
                 ASP(AutoSetup.hasControllerInterface
-                    and "Please enter a base Edit Mode layout name, or enable native controller support."
+                    and "Please enter a keyboard Base layout, or set Controller support to Leave alone or On."
                     or "Please enter a base Edit Mode layout name.")
+                return
+            end
+            -- A Target layout needs a Base layout of the same input mode to switch back to.
+            if (keyboard and layouts.keyboardLayoutTarget and not layouts.keyboardLayoutBase)
+                or (controller and layouts.controllerLayoutTarget and not layouts.controllerLayoutBase) then
+                ASP("Please enter a Base layout for each Target layout, to switch back to after combat.")
                 return
             end
 
             local profile = AutoSetup.EnsureProfile(res)
             profile.name = (name ~= "" and name) or ("Profile " .. res)
-            profile.editLayoutBase = (baseLayout ~= "" and baseLayout) or nil
-            profile.editLayoutTarget = (targetLayout ~= "" and targetLayout) or nil
+            for _, picker in ipairs(panel.layoutPickers) do profile[picker.field] = layouts[picker.field] end
             profile.scale = scale
-            profile.nativeControllerSupport = controllerSupport
+            profile.controllerSupport = controllerSupport
             profile.damageMeter = panel.damageMeterState
             local addons, features = SplitFeatures(ParseAddonsString(addonsStr))
             profile.addonSet = ResolveAddonNames(addons)
@@ -516,10 +582,9 @@ function AutoSetup_OptionsPanel_OnLoad(panel)
         panel.clearButton:SetScript("OnClick", function()
             panel.nameInput:SetText("")
             panel.resInput:SetText("")
-            panel.baseLayoutInput:SetText("")
-            panel.targetLayoutInput:SetText("")
+            for _, picker in ipairs(panel.layoutPickers) do picker.input:SetText("") end
             SetScaleOverride(panel, nil)
-            if panel.controllerCheck then panel.controllerCheck:SetChecked(false) end
+            SetControllerSupportState(panel, nil)
             SetDamageMeterState(panel, nil)
             panel.addonsInput:SetText("")
         end)

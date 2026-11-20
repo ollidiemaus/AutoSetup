@@ -2,6 +2,41 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:schemaLocation="http://www.blizzard.com/wow/ui/ ..\FrameXML\UI.xsd">
 
+    <!-- One layout picker: the name box with its label above and a Pick Layout button to its right,
+         all hidden with the box. -->
+    <EditBox name="AutoSetupLayoutPickerTemplate" inherits="InputBoxTemplate" autoFocus="false" virtual="true">
+        <Size>
+            <AbsDimension x="260" y="20"/>
+        </Size>
+        <Layers>
+            <Layer level="ARTWORK">
+                <FontString parentKey="Label" inherits="GameFontNormal" justifyH="LEFT">
+                    <Anchors>
+                        <Anchor point="BOTTOMLEFT" relativePoint="TOPLEFT">
+                            <Offset>
+                                <AbsDimension x="0" y="-2"/>
+                            </Offset>
+                        </Anchor>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            <Button parentKey="PickButton" inherits="GameMenuButtonTemplate" text="Pick Layout">
+                <Size>
+                    <AbsDimension x="120" y="22"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="LEFT" relativePoint="RIGHT">
+                        <Offset>
+                            <AbsDimension x="10" y="0"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+        </Frames>
+    </EditBox>
+
     <Frame name="AutoSetupOptionsPanel" parent="UIParent" hidden="true">
         <Scripts>
             <OnLoad function="AutoSetup_OptionsPanel_OnLoad"/>
@@ -105,93 +140,11 @@
                 </Anchors>
             </Button>
 
-            <!-- Base layout -->
-            <EditBox name="$parentBaseLayoutInput" inherits="InputBoxTemplate">
-                <Size>
-                    <AbsDimension x="260" y="20"/>
-                </Size>
-                <Anchors>
-                    <Anchor point="TOPLEFT">
-                        <Offset>
-                            <AbsDimension x="20" y="-150"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </EditBox>
-
-            <Button name="$parentBaseLayoutButton" inherits="GameMenuButtonTemplate" text="Pick Layout">
-                <Size>
-                    <AbsDimension x="120" y="22"/>
-                </Size>
-                <Anchors>
-                    <Anchor point="LEFT" relativeTo="$parentBaseLayoutInput" relativePoint="RIGHT">
-                        <Offset>
-                            <AbsDimension x="10" y="0"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </Button>
-
-            <Frame>
-                <Layers>
-                    <Layer level="ARTWORK">
-                        <FontString name="$parentBaseLayoutLabel" inherits="GameFontNormal" text="Base Edit Mode Layout Name">
-                            <Anchors>
-                                <!-- Label above the input -->
-                                <Anchor point="BOTTOMLEFT" relativeTo="$parentBaseLayoutInput" relativePoint="TOPLEFT">
-                                    <Offset>
-                                        <AbsDimension x="0" y="-2"/>
-                                    </Offset>
-                                </Anchor>
-                            </Anchors>
-                        </FontString>
-                    </Layer>
-                </Layers>
-            </Frame>
-
-            <!-- Target layout -->
-            <EditBox name="$parentTargetLayoutInput" inherits="InputBoxTemplate">
-                <Size>
-                    <AbsDimension x="260" y="20"/>
-                </Size>
-                <Anchors>
-                    <Anchor point="TOPLEFT">
-                        <Offset>
-                            <AbsDimension x="20" y="-200"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </EditBox>
-
-            <Button name="$parentTargetLayoutButton" inherits="GameMenuButtonTemplate" text="Pick Layout">
-                <Size>
-                    <AbsDimension x="120" y="22"/>
-                </Size>
-                <Anchors>
-                    <Anchor point="LEFT" relativeTo="$parentTargetLayoutInput" relativePoint="RIGHT">
-                        <Offset>
-                            <AbsDimension x="10" y="0"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </Button>
-
-            <Frame>
-                <Layers>
-                    <Layer level="ARTWORK">
-                        <FontString inherits="GameFontNormal" text="Target Layout (optional, used in combat/with target)">
-                            <Anchors>
-                                <!-- Label above the input -->
-                                <Anchor point="BOTTOMLEFT" relativeTo="$parentTargetLayoutInput" relativePoint="TOPLEFT">
-                                    <Offset>
-                                        <AbsDimension x="0" y="-2"/>
-                                    </Offset>
-                                </Anchor>
-                            </Anchors>
-                        </FontString>
-                    </Layer>
-                </Layers>
-            </Frame>
+            <!-- Base and Target layout per input mode; AutoSetup_Options.lua stacks the shown ones from y = -150 -->
+            <EditBox name="$parentKeyboardBaseLayoutInput" inherits="AutoSetupLayoutPickerTemplate"/>
+            <EditBox name="$parentKeyboardTargetLayoutInput" inherits="AutoSetupLayoutPickerTemplate"/>
+            <EditBox name="$parentControllerBaseLayoutInput" inherits="AutoSetupLayoutPickerTemplate"/>
+            <EditBox name="$parentControllerTargetLayoutInput" inherits="AutoSetupLayoutPickerTemplate"/>
 
             <!-- UI scale: unticked leaves the scale alone -->
             <CheckButton name="$parentScaleCheck" inherits="ChatConfigCheckButtonTemplate">
@@ -218,7 +171,7 @@
                 </Anchors>
             </Slider>
 
-            <!-- Damage Meter: in the right column, so it doesn't depend on the controller checkbox below -->
+            <!-- Damage Meter: right column, which stays fixed while the layout pickers come and go -->
             <Button name="$parentDamageMeterButton" inherits="GameMenuButtonTemplate">
                 <Size>
                     <AbsDimension x="200" y="22"/>
@@ -232,26 +185,29 @@
                 </Anchors>
             </Button>
 
-            <!-- Native controller support (WoW Forever) -->
-            <CheckButton name="$parentControllerCheck" inherits="ChatConfigCheckButtonTemplate">
-                <Anchors>
-                    <Anchor point="TOPLEFT">
-                        <Offset>
-                            <AbsDimension x="20" y="-240"/>
-                        </Offset>
-                    </Anchor>
-                </Anchors>
-            </CheckButton>
-
-            <!-- Addons input -->
-            <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiLine="true">
+            <!-- Controller support: Leave alone / On / Off, a button like the Damage Meter's -->
+            <Button name="$parentControllerSupportButton" inherits="GameMenuButtonTemplate">
                 <Size>
-                    <AbsDimension x="620" y="60"/>
+                    <AbsDimension x="200" y="22"/>
                 </Size>
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
-                            <AbsDimension x="20" y="-335"/>
+                            <AbsDimension x="460" y="-250"/>
+                        </Offset>
+                    </Anchor>
+                </Anchors>
+            </Button>
+
+            <!-- Addons input -->
+            <EditBox name="$parentAddonsInput" inherits="InputBoxTemplate" multiLine="true">
+                <Size>
+                    <AbsDimension x="620" y="50"/>
+                </Size>
+                <Anchors>
+                    <Anchor point="TOPLEFT">
+                        <Offset>
+                            <AbsDimension x="20" y="-360"/>
                         </Offset>
                     </Anchor>
                 </Anchors>
@@ -283,7 +239,7 @@
                 <Anchors>
                     <Anchor point="TOPLEFT">
                         <Offset>
-                            <AbsDimension x="20" y="-415"/>
+                            <AbsDimension x="20" y="-425"/>
                         </Offset>
                     </Anchor>
                 </Anchors>

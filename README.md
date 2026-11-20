@@ -2,7 +2,7 @@
 
 AutoSetup is a World of Warcraft addon that automatically applies **per‑resolution profiles** for:
 
-- **Edit Mode layouts** (base layout + optional combat/target layout)
+- **Edit Mode layouts** (base layout + optional combat/target layout, for keyboard and for controller)
 - **UI scale**
 - **AddOn enable/disable sets**
 - **The game's Damage Meter** (on, off or left alone)
@@ -37,6 +37,10 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
   - Optional `Target` layout is used when:
     - you are in combat, or
     - you have a target / soft enemy.
+  - On WoW Forever each profile has a Base and Target layout for keyboard and for controller.
+    AutoSetup uses the ones of the input mode the game is in, and switches right away when you
+    toggle the controller interface in the game's options (no reload; in combat it waits until
+    combat ends). A blank Base layout leaves Edit Mode alone in that input mode.
 
 - **AddOn set management**
   - Per‑profile addon map: enable some addons, disable others.
@@ -51,11 +55,12 @@ AutoSetup removes that friction: once profiles are configured, you log in and ju
   - It is the same switch as the game's advanced options, not Edit Mode's Damage Meter checkbox, which only controls the preview shown while placing it.
   - Leave alone changes nothing, and nothing restores an earlier value: a profile that needs the Damage Meter on after a profile that turned it off should say On.
 
-- **Native controller support per profile (WoW Forever only)**
-  - Optional flag marking whether a profile expects WoW Forever's built-in native controller support to be on or off (e.g. on for a Steam Deck/couch profile, off for a mouse-and-keyboard profile).
-  - This setting doesn't exist on any other flavor, so the checkbox is hidden entirely unless AutoSetup detects it's running on Forever.
-  - AutoSetup switches it at login/reload and then **reloads the UI once by itself**, which is when the switch takes effect (the game's own checkbox reloads too). The game logs an "action blocked" error for AutoSetup when this happens; the switch works regardless.
-  - The game doesn't let addons change it later in a session (e.g. right when you switch resolutions), and AutoSetup never reloads by itself in combat or twice in a row. In those cases it shows the "reload required" popup instead. Edit Mode is left untouched until the setting matches the profile.
+- **Controller support per profile (WoW Forever only)**
+  - Leave alone (the default for a new profile), On or Off: which input mode the game starts in for this resolution. Leave alone never changes it, so you can switch between keyboard and controller freely on one screen.
+  - It only sets the input mode; it never picks the profile, which always goes by resolution.
+  - This setting doesn't exist on any other flavor, so the button is hidden unless the game has the controller interface.
+  - With On or Off, AutoSetup switches it at login/reload and then **reloads the UI once by itself**, which is when the switch takes effect (the game's own checkbox reloads too). The game logs an "action blocked" error for AutoSetup when this happens; the switch works regardless.
+  - The game doesn't let addons change it later in a session (e.g. right when you switch resolutions), and AutoSetup never reloads by itself in combat or twice in a row. In those cases it shows the "reload required" popup instead, and applies the layouts of the input mode the game is actually in.
 
 - **Non‑intrusive behavior**
   - Never changes your actual resolution; it only **observes** it.
@@ -87,20 +92,21 @@ In the options panel:
    - Click **Use Current** to fill in the current resolution (e.g. `1920x1080`).
 2. **Profile name**
    - Any descriptive name (e.g. `PC 1440p`, `Steam Deck`, `Laptop`).
-3. **Base Edit Mode layout**
-   - Either type the layout name or click **Pick Layout** to choose from existing Edit Mode layouts.
-   - Leave blank if this profile has native controller support enabled: controller mode uses its own hidden default layout that doesn't appear in the layout picker, and a keyboard/mouse layout can't be applied while controller mode is active anyway. AutoSetup skips Edit Mode entirely for such profiles and lets the client manage it.
+3. **Base layout** (keyboard and controller on WoW Forever)
+   - Either type the layout name or click **Pick Layout** to choose from your saved Edit Mode layouts of that input mode. The game only selects a layout in its own input mode, so the controller picker lists controller layouts and the keyboard picker keyboard layouts.
+   - A blank controller Base layout leaves Edit Mode alone in controller mode.
 4. **Target layout (optional)**
-   - Optional alternate layout used while in combat or when you have a target.
-   - Leave blank if you only want one layout for this resolution, or if this profile has native controller support enabled (same reason as above).
+   - Optional alternate layout used while in combat or when you have a target, one per input mode.
+   - Leave blank if you only want one layout for that input mode.
 5. **UI Scale**
    - Tick **Set UI scale** and adjust the slider for a per‑profile UI scale. Unticked leaves the scale alone.
 6. **Damage Meter**
    - Click the button to step through `Damage Meter: Leave alone`, `On` and `Off`.
    - On and Off apply whenever the profile is applied. In combat the change waits until combat ends.
-7. **Enable native controller support** (only shown on WoW Forever)
-   - Check this if the profile expects WoW Forever's native controller support to be on (leave unchecked for keyboard/mouse profiles).
-   - AutoSetup switches it at the next login/reload and reloads the UI once by itself to finish. Mid-session (e.g. right after you save the profile or switch resolutions) it shows the reload popup first. Edit Mode is left alone until the setting matches the profile.
+7. **Controller support** (only shown on WoW Forever)
+   - Click the button to step through `Controller support: Leave alone`, `On` and `Off`.
+   - Leave alone shows both the keyboard and the controller layouts; On shows only the controller ones, Off only the keyboard ones.
+   - With On or Off, AutoSetup switches the input mode at the next login/reload and reloads the UI once by itself to finish. Mid-session (e.g. right after you save the profile or switch resolutions) it shows the reload popup first.
 8. **AddOns**
    - Comma/semicolon‑separated list of addons to enable/disable:
      - `WeakAuras, Details, Midnight Viewport`
@@ -123,7 +129,7 @@ Saved profiles are listed in the scrollable list at the bottom:
 - On login / `/reload` (once, not again after loading screens):
   - As soon as Edit Mode's layouts are loaded, AutoSetup detects the current resolution and applies:
     - Scale (if set)
-    - Base or target layout (depending on combat/target state)
+    - Base or target layout of the current input mode (depending on combat/target state)
     - Addon set (enabling/disabling only the configured addons) and addon features
     - Damage Meter (if the profile says On or Off)
 
@@ -134,7 +140,10 @@ Saved profiles are listed in the scrollable list at the bottom:
   - AutoSetup re‑evaluates whether to be on the **base** or **target** layout and switches only if needed. Scale, addons, features and the Damage Meter are left alone.
   - While Edit Mode is open it doesn't switch layouts; it catches up when you close Edit Mode.
 
-If AutoSetup detects that addons need to change for a profile, or that native controller support needs a reload it won't do by itself, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
+- When you switch between keyboard and controller (WoW Forever):
+  - AutoSetup switches to that input mode's base or target layout. Nothing else changes and no reload is needed.
+
+If AutoSetup detects that addons need to change for a profile, or that controller support needs a reload it won't do by itself, it shows a popup with **Reload UI** and **Later** buttons so you can apply those changes when it's convenient. If more than one thing needs a reload at the same time, the popup lists each reason on its own line rather than showing them one at a time.
 
 ---
 
