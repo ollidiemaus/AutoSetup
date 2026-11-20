@@ -122,16 +122,15 @@ local function ValidateFeatures(features)
     end
 end
 
--- The names of the user's layouts for one input mode (controller true or false). The game selects
--- a layout only in its own mode (interfaceStyle, nil for keyboard), so the other mode's layouts
--- aren't offered; the presets aren't either.
+-- The names of the user's layouts for one input mode (controller true or false). The other mode's
+-- layouts aren't offered, since the game won't select them; the presets aren't either.
 local function GetLayoutNames(controller)
     local names = {}
     local manager = EditModeManagerFrame
     if manager and manager:IsInitialized() then
         for _, layoutInfo in ipairs(manager:GetLayouts()) do
             if layoutInfo.layoutName and layoutInfo.layoutType ~= Enum.EditModeLayoutType.Preset
-                and (layoutInfo.interfaceStyle == AutoSetup.INTERFACE_STYLE_GAMEPAD) == controller then
+                and AutoSetup.IsLayoutOfInputMode(layoutInfo, controller) then
                 table.insert(names, layoutInfo.layoutName)
             end
         end
@@ -279,12 +278,15 @@ local function LayoutPairText(base, target)
     return (base or "none") .. (target and (" -> " .. target) or "")
 end
 
--- The layouts that apply in each input mode the profile can be in.
+-- The layouts that apply in each input mode the profile can be in. With On or Off the game can still
+-- be in the other mode (blocked, or switched by hand), so that mode's layouts show too when set.
 local function ProfileLayoutsText(data)
     if not AutoSetup.hasControllerInterface then
         return "Layout: " .. LayoutPairText(data.keyboardLayoutBase, data.keyboardLayoutTarget)
     end
     local keyboard, controller = ShownInputModes(data.controllerSupport)
+    keyboard = keyboard or data.keyboardLayoutBase ~= nil or data.keyboardLayoutTarget ~= nil
+    controller = controller or data.controllerLayoutBase ~= nil or data.controllerLayoutTarget ~= nil
     local parts = {}
     if keyboard then
         table.insert(parts, "Keyboard: " .. LayoutPairText(data.keyboardLayoutBase, data.keyboardLayoutTarget))

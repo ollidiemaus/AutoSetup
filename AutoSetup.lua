@@ -48,8 +48,14 @@ local function IsControllerInputMode()
         and C_InputInterfaceStyle.GetCurrentStyle() == INTERFACE_STYLE_GAMEPAD
 end
 
+-- Whether an Edit Mode layout belongs to the controller (true) or keyboard (false) input mode. The
+-- game selects a layout only in its own input mode.
+local function IsLayoutOfInputMode(layoutInfo, controller)
+    return (layoutInfo.interfaceStyle == INTERFACE_STYLE_GAMEPAD) == controller
+end
+
 AutoSetup.IsControllerInputMode = IsControllerInputMode
-AutoSetup.INTERFACE_STYLE_GAMEPAD = INTERFACE_STYLE_GAMEPAD
+AutoSetup.IsLayoutOfInputMode = IsLayoutOfInputMode
 
 -------------------------------------------------------------------------------
 -- Utility helpers
@@ -349,12 +355,11 @@ local function ApplyEditLayoutInternal(targetNameClean, attemptsLeft, verbose, r
             return
         end
 
-        -- The game selects a layout only in its own input mode, so a layout of the other mode
-        -- with the wanted name doesn't count.
-        local controllerMode = IsControllerInputMode()
+        -- A layout of the other input mode with the wanted name doesn't count.
+        local inControllerInput = IsControllerInputMode()
         for i, layoutInfo in ipairs(manager:GetLayouts()) do
             if CleanLayoutListName(layoutInfo.layoutName) == targetNameClean then
-                if (layoutInfo.interfaceStyle == INTERFACE_STYLE_GAMEPAD) == controllerMode then
+                if IsLayoutOfInputMode(layoutInfo, inControllerInput) then
                     foundIndex = i
                     foundName = layoutInfo.layoutName
                     break
