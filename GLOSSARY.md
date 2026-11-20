@@ -8,6 +8,22 @@ AutoSetup applies a saved setup of the game's interface for each screen resoluti
 The saved setup for one resolution, applied whenever the game runs at that resolution.
 _Avoid_: Preset, config
 
+**Input mode**:
+Whether the game's interface is set up for keyboard and mouse or for a controller (the game's controller interface). Clients without the controller interface are always in keyboard mode.
+_Avoid_: Controller mode, interface style, gamepad mode
+
+**Controller support**:
+A Profile's setting for which Input mode the game starts in: Leave alone, On or Off. It sets the Input mode; it isn't the Input mode itself.
+_Avoid_: Controller mode, native controller support
+
+**Base layout**:
+The Edit Mode layout a Profile uses out of combat and without a target. A Profile has one for each Input mode.
+_Avoid_: Default layout, main layout
+
+**Target layout**:
+The Edit Mode layout a Profile uses in combat or while something is targeted. A Profile has one for each Input mode; without one, the Base layout stays.
+_Avoid_: Combat layout
+
 **Damage Meter**:
 The game's built-in meter of combat performance. It is either on or off for the whole game, independent of any Edit Mode layout.
 _Avoid_: DPS meter
