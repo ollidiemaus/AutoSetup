@@ -26,3 +26,6 @@ jobs:
 
       - name: Lua syntax
         run: git ls-files '*.lua' | xargs -n1 luac -p
+
+      - name: Offline tests
+        run: lua tests/run.lua
